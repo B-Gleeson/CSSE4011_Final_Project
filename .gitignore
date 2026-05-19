@@ -53,3 +53,11 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Bisbee added
+datasets/
+runs/
+models/
+__pycache__/
+*.pt
+.env

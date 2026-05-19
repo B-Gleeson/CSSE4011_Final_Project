@@ -1,0 +1,82 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(HardhatDetection)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ============================================================
+# Find Packages
+# ============================================================
+
+find_package(OpenCV REQUIRED)
+
+find_package(CUDA REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(PAHO_MQTT REQUIRED
+    paho-mqttpp3
+)
+
+# ============================================================
+# TensorRT
+# ============================================================
+
+include_directories(
+    /usr/include/aarch64-linux-gnu
+)
+
+link_directories(
+    /usr/lib/aarch64-linux-gnu
+)
+
+# ============================================================
+# Include Directories
+# ============================================================
+
+include_directories(
+    include
+    ${OpenCV_INCLUDE_DIRS}
+    ${PAHO_MQTT_INCLUDE_DIRS}
+)
+
+# ============================================================
+# Source Files
+# ============================================================
+
+set(SOURCES
+    src/main.cpp
+    src/detector.cpp
+    src/camera.cpp
+    src/alert_logic.cpp
+    src/render.cpp
+)
+
+# ============================================================
+# Executable
+# ============================================================
+
+add_executable(app ${SOURCES})
+
+# ============================================================
+# Link Libraries
+# ============================================================
+
+target_link_libraries(app
+    ${OpenCV_LIBS}
+
+    nvinfer
+    cudart
+
+    ${PAHO_MQTT_LIBRARIES}
+)
+
+# ============================================================
+# Compiler Warnings
+# ============================================================
+
+target_compile_options(app PRIVATE
+    -Wall
+    -Wextra
+)
