@@ -1,16 +1,19 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
+from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 import os
 import json
 
-INCOMING_DIR = Path("images/incoming")
-INCOMING_DIR.mkdir(parents=True, exist_ok=True)
-
+INCOMING_DIR = os.path.join("images", "incoming")
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
+def ensure_dir(path):
+    if not os.path.isdir(path):
+        os.makedirs(path)
+
+
 class ImageReceiverHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         if self.path == "/" or self.path == "/health":
             response = {
@@ -18,7 +21,7 @@ class ImageReceiverHandler(BaseHTTPRequestHandler):
                 "message": "ESP32-CAM receiver running"
             }
 
-            body = json.dumps(response).encode("utf-8")
+            body = json.dumps(response) + "\n"
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -36,12 +39,12 @@ class ImageReceiverHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        content_length = self.headers.get("Content-Length")
+        content_length = self.headers.getheader("Content-Length")
 
         if content_length is None:
             self.send_response(411)
             self.end_headers()
-            self.wfile.write(b"Missing Content-Length")
+            self.wfile.write("Missing Content-Length")
             return
 
         try:
@@ -49,44 +52,51 @@ class ImageReceiverHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_response(400)
             self.end_headers()
-            self.wfile.write(b"Invalid Content-Length")
+            self.wfile.write("Invalid Content-Length")
             return
 
         if content_length <= 0:
             self.send_response(400)
             self.end_headers()
-            self.wfile.write(b"No image data")
+            self.wfile.write("No image data")
             return
 
         if content_length > MAX_IMAGE_SIZE:
             self.send_response(413)
             self.end_headers()
-            self.wfile.write(b"Image too large")
+            self.wfile.write("Image too large")
             return
 
         image_data = self.rfile.read(content_length)
 
+        if len(image_data) != content_length:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write("Incomplete image received")
+            return
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
-        tmp_path = INCOMING_DIR / f"{timestamp}.tmp"
-        jpg_path = INCOMING_DIR / f"{timestamp}.jpg"
+        tmp_path = os.path.join(INCOMING_DIR, timestamp + ".tmp")
+        jpg_path = os.path.join(INCOMING_DIR, timestamp + ".jpg")
 
         try:
             with open(tmp_path, "wb") as f:
                 f.write(image_data)
 
-            # Rename only after full file is written
-            os.replace(tmp_path, jpg_path)
+            # Python 2 does not have os.replace().
+            # On Linux, os.rename() is atomic if source/destination are on same filesystem.
+            os.rename(tmp_path, jpg_path)
 
-            print(f"Saved {jpg_path} ({len(image_data)} bytes)")
+            print("Saved {0} ({1} bytes)".format(jpg_path, len(image_data)))
 
             response = {
                 "status": "ok",
-                "filename": str(jpg_path),
+                "filename": jpg_path,
                 "bytes": len(image_data)
             }
 
-            body = json.dumps(response).encode("utf-8")
+            body = json.dumps(response) + "\n"
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -95,24 +105,26 @@ class ImageReceiverHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
         except Exception as e:
-            print(f"Error saving image: {e}")
+            print("Error saving image: {0}".format(e))
 
-            if tmp_path.exists():
-                tmp_path.unlink()
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
             self.send_response(500)
             self.end_headers()
-            self.wfile.write(b"Failed to save image")
+            self.wfile.write("Failed to save image")
 
 
 def main():
     host = "0.0.0.0"
     port = 5000
 
+    ensure_dir(INCOMING_DIR)
+
     server = HTTPServer((host, port), ImageReceiverHandler)
 
-    print(f"Receiver running on http://{host}:{port}")
-    print(f"Saving images to: {INCOMING_DIR}")
+    print("Receiver running on http://{0}:{1}".format(host, port))
+    print("Saving images to: {0}".format(INCOMING_DIR))
 
     server.serve_forever()
 
