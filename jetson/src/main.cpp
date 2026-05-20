@@ -59,9 +59,23 @@ int main(int argc, char** argv)
             2
         );
 
+        std::string className;
+
+        if (det.class_id == 0)
+        {
+            className = "head";
+        }
+        else if (det.class_id == 1)
+        {
+            className = "helmet";
+        }
+        else
+        {
+            className = "unknown";
+        }
+
         std::string label =
-            "Class: " +
-            std::to_string(det.class_id) +
+            className +
             " " +
             std::to_string(det.confidence);
 
@@ -80,9 +94,11 @@ int main(int argc, char** argv)
     // Show result
     // ========================================================
 
-    cv::imshow("Detections", image);
+    cv::imwrite("output.jpg", image);
 
-    cv::waitKey(0);
+    std::cout
+        << "Saved output.jpg"
+        << std::endl;
 
     return 0;
 }

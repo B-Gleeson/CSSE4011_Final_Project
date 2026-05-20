@@ -333,8 +333,8 @@ YOLODetector::infer(cv::Mat& frame)
 
     cudaStreamSynchronize(stream);
 
-    // ========================================================
-    // YOLO Postprocessing
+        // ========================================================
+    // YOLOv8 Postprocessing
     // ========================================================
 
     std::vector<Detection> detections;
@@ -344,34 +344,63 @@ YOLODetector::infer(cv::Mat& frame)
     std::vector<int> class_ids;
 
     const int numPredictions = 8400;
-    const int dimensions = 6;
+
+    const int numClasses = 2;
+
+    const float confThreshold = 0.5f;
+
+    const float nmsThreshold = 0.4f;
+
+    // Output shape:
+    // [1, 4 + numClasses, 8400]
 
     for (int i = 0; i < numPredictions; i++)
     {
-        float confidence =
-            output[i * dimensions + 4];
+        // ================================================
+        // Box coordinates
+        // ================================================
 
-        if (confidence < 0.5f)
+        float cx = output[0 * numPredictions + i];
+
+        float cy = output[1 * numPredictions + i];
+
+        float w  = output[2 * numPredictions + i];
+
+        float h  = output[3 * numPredictions + i];
+
+        // ================================================
+        // Find best class
+        // ================================================
+
+        int class_id = -1;
+
+        float bestScore = 0.0f;
+
+        for (int c = 0; c < numClasses; c++)
+        {
+            float score =
+                output[(4 + c) * numPredictions + i];
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+
+                class_id = c;
+            }
+        }
+
+        // ================================================
+        // Confidence threshold
+        // ================================================
+
+        if (bestScore < confThreshold)
         {
             continue;
         }
 
-        int class_id =
-            static_cast<int>(
-                output[i * dimensions + 5]
-            );
-
-        float cx =
-            output[i * dimensions + 0];
-
-        float cy =
-            output[i * dimensions + 1];
-
-        float w =
-            output[i * dimensions + 2];
-
-        float h =
-            output[i * dimensions + 3];
+        // ================================================
+        // Convert coordinates
+        // ================================================
 
         int left =
             static_cast<int>(
@@ -395,22 +424,26 @@ YOLODetector::infer(cv::Mat& frame)
                 h * frame.rows / inputHeight
             );
 
+        left = std::max(0, left);
+        top = std::max(0, top);
+
+        width =
+            std::min(width, frame.cols - left);
+
+        height =
+            std::min(height, frame.rows - top);
+
         boxes.push_back(
-            cv::Rect(
-                left,
-                top,
-                width,
-                height
-            )
+            cv::Rect(left, top, width, height)
         );
 
-        confidences.push_back(confidence);
+        confidences.push_back(bestScore);
 
         class_ids.push_back(class_id);
     }
 
     // ========================================================
-    // Apply NMS
+    // Non-Max Suppression
     // ========================================================
 
     std::vector<int> indices;
@@ -418,8 +451,8 @@ YOLODetector::infer(cv::Mat& frame)
     cv::dnn::NMSBoxes(
         boxes,
         confidences,
-        0.5f,
-        0.4f,
+        confThreshold,
+        nmsThreshold,
         indices
     );
 
@@ -432,7 +465,9 @@ YOLODetector::infer(cv::Mat& frame)
         Detection det;
 
         det.box = boxes[idx];
+
         det.confidence = confidences[idx];
+
         det.class_id = class_ids[idx];
 
         detections.push_back(det);
