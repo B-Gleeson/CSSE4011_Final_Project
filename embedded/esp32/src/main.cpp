@@ -6,11 +6,11 @@
 // =======================
 // Wi-Fi details
 // =======================
-const char* WIFI_SSID = "YOUR_WIFI_NAME";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID = "Iphone 67";
+const char* WIFI_PASSWORD = "sunasuna";
 
 // Jetson receiver URL
-const char* SERVER_URL = "http://192.168.1.42:5000/upload";
+const char* SERVER_URL = "http://172.20.10.9:5000/upload";
 
 // Take one photo every 30 seconds
 const unsigned long PHOTO_INTERVAL_MS = 30000;
