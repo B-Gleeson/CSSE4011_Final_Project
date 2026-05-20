@@ -1,160 +1,88 @@
 // main.cpp
 
-#include <iostream>
-#include <chrono>
-
-#include <opencv2/opencv.hpp>
-
 #include "detector.hpp"
-#include "camera.hpp"
-#include "alert_logic.hpp"
-#include "render.hpp"
+
+#include <iostream>
 
 int main(int argc, char** argv)
 {
-    // ============================================================
-    // Check arguments
-    // ============================================================
-
-    if (argc < 2)
+    if (argc < 3)
     {
-        std::cout << "Usage: ./app <engine_file>"
-                  << std::endl;
+        std::cout
+            << "Usage: ./ppe_inference engine image"
+            << std::endl;
 
         return -1;
     }
 
     std::string enginePath = argv[1];
+    std::string imagePath  = argv[2];
 
-    // ============================================================
-    // Initialize systems
-    // ============================================================
+    // ========================================================
+    // Load image
+    // ========================================================
 
-    YOLODetector detector(enginePath);
+    cv::Mat image = cv::imread(imagePath);
 
-    CameraReceiver camera;
-
-    Renderer renderer;
-
-    AlertLogic alerts;
-
-    // ============================================================
-    // Connect MQTT camera receiver
-    // ============================================================
-
-    if (!camera.connect())
+    if (image.empty())
     {
-        std::cerr << "Failed to connect camera receiver."
-                  << std::endl;
+        std::cout
+            << "Failed to load image."
+            << std::endl;
 
         return -1;
     }
 
-    std::cout << "System initialized."
-              << std::endl;
+    // ========================================================
+    // Create detector
+    // ========================================================
 
-    // ============================================================
-    // Main loop
-    // ============================================================
+    YOLODetector detector(enginePath);
 
-    cv::Mat frame;
+    // ========================================================
+    // Run inference
+    // ========================================================
 
-    while (true)
+    auto detections =
+        detector.infer(image);
+
+    // ========================================================
+    // Draw detections
+    // ========================================================
+
+    for (const auto& det : detections)
     {
-        // ========================================================
-        // Receive frame from ESP32-CAM
-        // ========================================================
-
-        bool success = camera.getFrame(frame);
-
-        if (!success)
-        {
-            continue;
-        }
-
-        // ========================================================
-        // Start timing
-        // ========================================================
-
-        auto start =
-            std::chrono::high_resolution_clock::now();
-
-        // ========================================================
-        // Run inference
-        // ========================================================
-
-        std::vector<Detection> detections =
-            detector.infer(frame);
-
-        // ========================================================
-        // Check alerts
-        // ========================================================
-
-        bool violation =
-            alerts.hasViolation(detections);
-
-        if (violation)
-        {
-            alerts.triggerAlert();
-
-            alerts.drawAlertOverlay(frame);
-        }
-
-        // ========================================================
-        // Draw detections
-        // ========================================================
-
-        renderer.drawDetections(
-            frame,
-            detections
+        cv::rectangle(
+            image,
+            det.box,
+            cv::Scalar(0, 255, 0),
+            2
         );
 
-        // ========================================================
-        // Calculate FPS
-        // ========================================================
+        std::string label =
+            "Class: " +
+            std::to_string(det.class_id) +
+            " " +
+            std::to_string(det.confidence);
 
-        auto end =
-            std::chrono::high_resolution_clock::now();
-
-        float fps =
-            1000.0f /
-            std::chrono::duration<float, std::milli>(
-                end - start
-            ).count();
-
-        renderer.drawFPS(frame, fps);
-
-        // ========================================================
-        // Display frame
-        // ========================================================
-
-        renderer.show(
-            "Hardhat Detection",
-            frame
+        cv::putText(
+            image,
+            label,
+            cv::Point(det.box.x, det.box.y - 10),
+            cv::FONT_HERSHEY_SIMPLEX,
+            0.5,
+            cv::Scalar(0, 255, 0),
+            2
         );
-
-        // ========================================================
-        // Quit handling
-        // ========================================================
-
-        int key = cv::waitKey(1);
-
-        if (key == 'q' || key == 27)
-        {
-            break;
-        }
     }
 
-    // ============================================================
-    // Cleanup
-    // ============================================================
+    // ========================================================
+    // Show result
+    // ========================================================
 
-    camera.disconnect();
+    cv::imshow("Detections", image);
 
-    cv::destroyAllWindows();
-
-    std::cout << "Shutdown complete."
-              << std::endl;
+    cv::waitKey(0);
 
     return 0;
 }

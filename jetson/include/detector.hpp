@@ -12,6 +12,22 @@
 #include <cuda_runtime_api.h>
 
 // ============================================================
+// TensorRT Destroy Helper
+// ============================================================
+
+struct TRTDestroy
+{
+    template <typename T>
+    void operator()(T* obj) const
+    {
+        if (obj)
+        {
+            obj->destroy();
+        }
+    }
+};
+
+// ============================================================
 // Detection Structure
 // ============================================================
 
@@ -32,28 +48,57 @@ class YOLODetector
 {
 private:
 
-    std::unique_ptr<nvinfer1::ICudaEngine> engine;
+    // ========================================================
+    // TensorRT
+    // ========================================================
 
-    std::unique_ptr<nvinfer1::IExecutionContext> context;
+    std::unique_ptr<
+        nvinfer1::ICudaEngine,
+        TRTDestroy
+    > engine;
+
+    std::unique_ptr<
+        nvinfer1::IExecutionContext,
+        TRTDestroy
+    > context;
+
+    // ========================================================
+    // CUDA
+    // ========================================================
 
     cudaStream_t stream;
 
     void* buffers[2];
 
+    // ========================================================
+    // Bindings
+    // ========================================================
+
     int inputIndex;
     int outputIndex;
 
+    // ========================================================
+    // Input dimensions
+    // ========================================================
+
     int inputWidth;
     int inputHeight;
+
+    // ========================================================
+    // Buffer sizes
+    // ========================================================
 
     size_t inputSize;
     size_t outputSize;
 
 public:
 
-    YOLODetector(const std::string& enginePath);
+    YOLODetector(
+        const std::string& enginePath
+    );
 
     ~YOLODetector();
 
-    std::vector<Detection> infer(cv::Mat& frame);
+    std::vector<Detection>
+    infer(cv::Mat& frame);
 };

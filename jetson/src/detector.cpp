@@ -9,6 +9,9 @@
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
 
+#include <opencv2/opencv.hpp>
+#include <opencv2/dnn/dnn.hpp>
+
 // ============================================================
 // TensorRT Logger
 // ============================================================
@@ -25,26 +28,6 @@ public:
     }
 };
 
-// ============================================================
-// TensorRT Destroy Helper
-// ============================================================
-
-struct TRTDestroy
-{
-    template <typename T>
-    void operator()(T* obj) const
-    {
-        if (obj)
-        {
-            obj->destroy();
-        }
-    }
-};
-
-// ============================================================
-// Private Globals
-// ============================================================
-
 static Logger logger;
 
 // ============================================================
@@ -53,35 +36,50 @@ static Logger logger;
 
 YOLODetector::YOLODetector(const std::string& enginePath)
 {
-    // ============================================
-    // Load TensorRT engine file
-    // ============================================
+    // ========================================================
+    // Load engine file
+    // ========================================================
 
     std::ifstream file(enginePath, std::ios::binary);
 
     if (!file.good())
     {
         throw std::runtime_error(
-            "Failed to open engine file."
+            "Failed to open TensorRT engine."
         );
     }
 
     file.seekg(0, std::ios::end);
+
     size_t modelSize = file.tellg();
+
     file.seekg(0, std::ios::beg);
 
     std::vector<char> engineData(modelSize);
 
     file.read(engineData.data(), modelSize);
 
-    // ============================================
-    // Create TensorRT runtime
-    // ============================================
+    file.close();
+
+    // ========================================================
+    // Create runtime
+    // ========================================================
 
     std::unique_ptr<nvinfer1::IRuntime, TRTDestroy>
         runtime(
             nvinfer1::createInferRuntime(logger)
         );
+
+    if (!runtime)
+    {
+        throw std::runtime_error(
+            "Failed to create TensorRT runtime."
+        );
+    }
+
+    // ========================================================
+    // Deserialize engine
+    // ========================================================
 
     engine.reset(
         runtime->deserializeCudaEngine(
@@ -93,13 +91,13 @@ YOLODetector::YOLODetector(const std::string& enginePath)
     if (!engine)
     {
         throw std::runtime_error(
-            "Failed to deserialize TensorRT engine."
+            "Failed to deserialize engine."
         );
     }
 
-    // ============================================
+    // ========================================================
     // Create execution context
-    // ============================================
+    // ========================================================
 
     context.reset(
         engine->createExecutionContext()
@@ -108,22 +106,42 @@ YOLODetector::YOLODetector(const std::string& enginePath)
     if (!context)
     {
         throw std::runtime_error(
-            "Failed to create TensorRT context."
+            "Failed to create execution context."
         );
     }
 
-    // ============================================
-    // Create CUDA stream
-    // ============================================
+    // ========================================================
+    // Print bindings
+    // ========================================================
 
-    cudaStreamCreate(&stream);
+    std::cout << "Bindings:" << std::endl;
 
-    // ============================================
-    // Locate bindings
-    // ============================================
+    for (int i = 0; i < engine->getNbBindings(); i++)
+    {
+        std::cout
+            << i
+            << " -> "
+            << engine->getBindingName(i)
+            << std::endl;
+    }
+
+    // ========================================================
+    // Binding indices
+    // ========================================================
 
     inputIndex  = engine->getBindingIndex("images");
     outputIndex = engine->getBindingIndex("output0");
+
+    if (inputIndex < 0 || outputIndex < 0)
+    {
+        throw std::runtime_error(
+            "Failed to find bindings."
+        );
+    }
+
+    // ========================================================
+    // Input dimensions
+    // ========================================================
 
     auto inputDims =
         engine->getBindingDimensions(inputIndex);
@@ -134,9 +152,9 @@ YOLODetector::YOLODetector(const std::string& enginePath)
     inputHeight = inputDims.d[2];
     inputWidth  = inputDims.d[3];
 
-    // ============================================
-    // Calculate buffer sizes
-    // ============================================
+    // ========================================================
+    // Calculate sizes
+    // ========================================================
 
     inputSize = 1;
 
@@ -156,15 +174,45 @@ YOLODetector::YOLODetector(const std::string& enginePath)
 
     outputSize *= sizeof(float);
 
-    // ============================================
+    // ========================================================
     // Allocate GPU memory
-    // ============================================
+    // ========================================================
 
-    cudaMalloc(&buffers[inputIndex], inputSize);
-    cudaMalloc(&buffers[outputIndex], outputSize);
+    cudaError_t status;
 
-    std::cout << "YOLO detector initialized."
-              << std::endl;
+    status = cudaMalloc(
+        &buffers[inputIndex],
+        inputSize
+    );
+
+    if (status != cudaSuccess)
+    {
+        throw std::runtime_error(
+            "Failed to allocate input buffer."
+        );
+    }
+
+    status = cudaMalloc(
+        &buffers[outputIndex],
+        outputSize
+    );
+
+    if (status != cudaSuccess)
+    {
+        throw std::runtime_error(
+            "Failed to allocate output buffer."
+        );
+    }
+
+    // ========================================================
+    // Create CUDA stream
+    // ========================================================
+
+    cudaStreamCreate(&stream);
+
+    std::cout
+        << "YOLO detector initialized."
+        << std::endl;
 }
 
 // ============================================================
@@ -186,9 +234,9 @@ YOLODetector::~YOLODetector()
 std::vector<Detection>
 YOLODetector::infer(cv::Mat& frame)
 {
-    // ============================================
-    // Resize image
-    // ============================================
+    // ========================================================
+    // Preprocessing
+    // ========================================================
 
     cv::Mat resized;
 
@@ -198,9 +246,15 @@ YOLODetector::infer(cv::Mat& frame)
         cv::Size(inputWidth, inputHeight)
     );
 
-    // ============================================
+    // BGR -> RGB
+
+    cv::cvtColor(
+        resized,
+        resized,
+        cv::COLOR_BGR2RGB
+    );
+
     // Normalize
-    // ============================================
 
     resized.convertTo(
         resized,
@@ -208,9 +262,9 @@ YOLODetector::infer(cv::Mat& frame)
         1.0 / 255.0
     );
 
-    // ============================================
+    // ========================================================
     // HWC -> CHW
-    // ============================================
+    // ========================================================
 
     std::vector<float>
         inputTensor(inputSize / sizeof(float));
@@ -232,9 +286,9 @@ YOLODetector::infer(cv::Mat& frame)
         }
     }
 
-    // ============================================
+    // ========================================================
     // Copy input to GPU
-    // ============================================
+    // ========================================================
 
     cudaMemcpyAsync(
         buffers[inputIndex],
@@ -244,19 +298,27 @@ YOLODetector::infer(cv::Mat& frame)
         stream
     );
 
-    // ============================================
+    // ========================================================
     // Run inference
-    // ============================================
+    // ========================================================
 
-    context->enqueueV2(
-        buffers,
-        stream,
-        nullptr
-    );
+    bool success =
+        context->enqueueV2(
+            buffers,
+            stream,
+            nullptr
+        );
 
-    // ============================================
-    // Copy output from GPU
-    // ============================================
+    if (!success)
+    {
+        throw std::runtime_error(
+            "TensorRT inference failed."
+        );
+    }
+
+    // ========================================================
+    // Copy output back
+    // ========================================================
 
     std::vector<float>
         output(outputSize / sizeof(float));
@@ -271,11 +333,15 @@ YOLODetector::infer(cv::Mat& frame)
 
     cudaStreamSynchronize(stream);
 
-    // ============================================
+    // ========================================================
     // YOLO Postprocessing
-    // ============================================
+    // ========================================================
 
     std::vector<Detection> detections;
+
+    std::vector<cv::Rect> boxes;
+    std::vector<float> confidences;
+    std::vector<int> class_ids;
 
     const int numPredictions = 8400;
     const int dimensions = 6;
@@ -291,7 +357,9 @@ YOLODetector::infer(cv::Mat& frame)
         }
 
         int class_id =
-            (int)output[i * dimensions + 5];
+            static_cast<int>(
+                output[i * dimensions + 5]
+            );
 
         float cx =
             output[i * dimensions + 0];
@@ -327,18 +395,45 @@ YOLODetector::infer(cv::Mat& frame)
                 h * frame.rows / inputHeight
             );
 
-        Detection det;
-
-        det.box =
+        boxes.push_back(
             cv::Rect(
                 left,
                 top,
                 width,
                 height
-            );
+            )
+        );
 
-        det.confidence = confidence;
-        det.class_id = class_id;
+        confidences.push_back(confidence);
+
+        class_ids.push_back(class_id);
+    }
+
+    // ========================================================
+    // Apply NMS
+    // ========================================================
+
+    std::vector<int> indices;
+
+    cv::dnn::NMSBoxes(
+        boxes,
+        confidences,
+        0.5f,
+        0.4f,
+        indices
+    );
+
+    // ========================================================
+    // Final detections
+    // ========================================================
+
+    for (int idx : indices)
+    {
+        Detection det;
+
+        det.box = boxes[idx];
+        det.confidence = confidences[idx];
+        det.class_id = class_ids[idx];
 
         detections.push_back(det);
     }
