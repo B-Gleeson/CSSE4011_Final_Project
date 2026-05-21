@@ -26,8 +26,8 @@
  * User configuration
  * ============================================================ */
 
-#define WIFI_SSID       "csse4011"
-#define WIFI_PSK        "csse4011wifi"
+#define WIFI_SSID       "Iphone 67"
+#define WIFI_PSK        "sunasuna"
 
 #define JETSON_IP       "192.168.1.54"
 #define JETSON_PORT     5000
@@ -83,6 +83,9 @@ static K_SEM_DEFINE(ipv4_addr_sem, 0, 1);
 static struct net_mgmt_event_callback wifi_cb;
 static struct net_mgmt_event_callback ipv4_cb;
 
+static bool wifi_callbacks_registered;
+static bool wifi_associated;
+
 static K_MUTEX_DEFINE(serial_mutex);
 static K_MUTEX_DEFINE(http_mutex);
 
@@ -108,6 +111,9 @@ static struct bt_gatt_discover_params discover_params;
 static struct bt_gatt_subscribe_params subscribe_params;
 
 /* Threads */
+K_THREAD_STACK_DEFINE(wifi_stack, 4096);
+static struct k_thread wifi_thread_data;
+
 K_THREAD_STACK_DEFINE(serial_rx_stack, 2048);
 static struct k_thread serial_rx_thread_data;
 
@@ -707,7 +713,7 @@ out:
  * ============================================================ */
 
 static void wifi_event_handler(struct net_mgmt_event_callback *cb,
-                               uint32_t mgmt_event,
+                               uint64_t mgmt_event,
                                struct net_if *iface)
 {
     ARG_UNUSED(iface);
@@ -717,31 +723,64 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
             (const struct wifi_status *)cb->info;
 
         if (status && status->status == 0) {
-            wifi_ready = true;
+            wifi_associated = true;
+            dashboard_send_status("wifi_associated");
             k_sem_give(&wifi_connected_sem);
-            dashboard_send_status("wifi_connected");
         } else {
+            wifi_associated = false;
             wifi_ready = false;
-            dashboard_send_status("wifi_connect_failed");
+
+            char msg[96];
+            snprintf(msg, sizeof(msg),
+                     "wifi_connect_failed_code_%d",
+                     status ? status->status : -999);
+            dashboard_send_status(msg);
+
+            k_sem_give(&wifi_connected_sem);
         }
     }
 
     if (mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+        wifi_associated = false;
         wifi_ready = false;
         dashboard_send_status("wifi_disconnected");
     }
 }
 
+
+
 static void ipv4_event_handler(struct net_mgmt_event_callback *cb,
-                               uint32_t mgmt_event,
+                               uint64_t mgmt_event,
                                struct net_if *iface)
 {
     ARG_UNUSED(cb);
     ARG_UNUSED(iface);
 
     if (mgmt_event == NET_EVENT_IPV4_ADDR_ADD) {
+        wifi_ready = true;
+        dashboard_send_status("wifi_ipv4_ready");
         k_sem_give(&ipv4_addr_sem);
     }
+}
+
+static void wifi_events_init_once(void)
+{
+    if (wifi_callbacks_registered) {
+        return;
+    }
+
+    net_mgmt_init_event_callback(&wifi_cb,
+                                 wifi_event_handler,
+                                 NET_EVENT_WIFI_CONNECT_RESULT |
+                                 NET_EVENT_WIFI_DISCONNECT_RESULT);
+    net_mgmt_add_event_callback(&wifi_cb);
+
+    net_mgmt_init_event_callback(&ipv4_cb,
+                                 ipv4_event_handler,
+                                 NET_EVENT_IPV4_ADDR_ADD);
+    net_mgmt_add_event_callback(&ipv4_cb);
+
+    wifi_callbacks_registered = true;
 }
 
 static int wifi_connect(void)
@@ -753,14 +792,20 @@ static int wifi_connect(void)
         return -ENODEV;
     }
 
-    net_mgmt_init_event_callback(&wifi_cb, wifi_event_handler,
-                                 NET_EVENT_WIFI_CONNECT_RESULT |
-                                 NET_EVENT_WIFI_DISCONNECT_RESULT);
-    net_mgmt_add_event_callback(&wifi_cb);
+    wifi_events_init_once();
 
-    net_mgmt_init_event_callback(&ipv4_cb, ipv4_event_handler,
-                                 NET_EVENT_IPV4_ADDR_ADD);
-    net_mgmt_add_event_callback(&ipv4_cb);
+    k_sem_reset(&wifi_connected_sem);
+    k_sem_reset(&ipv4_addr_sem);
+
+    wifi_associated = false;
+    wifi_ready = false;
+
+    /*
+     * Clear any previous half-open connection attempt before retrying.
+     * Ignore the return value because disconnect may fail when already idle.
+     */
+    (void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+    k_sleep(K_SECONDS(1));
 
     struct wifi_connect_req_params params = {
         .ssid = WIFI_SSID,
@@ -774,23 +819,38 @@ static int wifi_connect(void)
 
     dashboard_send_status("wifi_connecting");
 
-    int err = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface,
-                       &params, sizeof(params));
+    int err = net_mgmt(NET_REQUEST_WIFI_CONNECT,
+                       iface,
+                       &params,
+                       sizeof(params));
 
     if (err) {
-        dashboard_send_status("wifi_request_failed");
+        char msg[96];
+        snprintf(msg, sizeof(msg), "wifi_request_failed_%d", err);
+        dashboard_send_status(msg);
         return err;
     }
 
-    err = k_sem_take(&wifi_connected_sem, K_SECONDS(25));
+    err = k_sem_take(&wifi_connected_sem, K_SECONDS(60));
 
     if (err) {
-        dashboard_send_status("wifi_timeout");
+        dashboard_send_status("wifi_assoc_timeout");
         return -ETIMEDOUT;
     }
 
-    (void)k_sem_take(&ipv4_addr_sem, K_SECONDS(20));
+    if (!wifi_associated) {
+        dashboard_send_status("wifi_failed_not_associated");
+        return -EIO;
+    }
 
+    err = k_sem_take(&ipv4_addr_sem, K_SECONDS(20));
+
+    if (err) {
+        dashboard_send_status("wifi_ipv4_timeout");
+        return -ETIMEDOUT;
+    }
+
+    dashboard_send_status("wifi_ready");
     return 0;
 }
 
@@ -1192,6 +1252,11 @@ static void handle_dashboard_command(const char *line)
     }
 
     if (strcmp(target, "camera") == 0 && strcmp(command, "take_photo") == 0) {
+        if (!wifi_ready) {
+            dashboard_send_alert("Camera command failed: Wi-Fi not ready");
+            return;
+        }
+
         int err = http_post_json(CAMERA_COMMAND_PATH,
                                  "{\"command\":\"take_photo\"}");
 
@@ -1263,6 +1328,31 @@ static void serial_rx_thread(void *a, void *b, void *c)
         } else {
             k_sleep(K_MSEC(20));
         }
+    }
+}
+
+/* ============================================================
+ * Wi-Fi manager
+ * ============================================================ */
+
+static void wifi_thread(void *a, void *b, void *c)
+{
+    ARG_UNUSED(a);
+    ARG_UNUSED(b);
+    ARG_UNUSED(c);
+
+    while (true) {
+        if (!wifi_ready) {
+            int err = wifi_connect();
+
+            if (err) {
+                dashboard_send_status("wifi_retrying");
+                k_sleep(K_SECONDS(5));
+                continue;
+            }
+        }
+
+        k_sleep(K_SECONDS(10));
     }
 }
 
@@ -1352,8 +1442,18 @@ int main(void)
 
     dashboard_send_status("booting");
 
-    (void)wifi_connect();
-    (void)ble_init();
+    k_thread_create(&wifi_thread_data,
+                    wifi_stack,
+                    K_THREAD_STACK_SIZEOF(wifi_stack),
+                    wifi_thread,
+                    NULL,
+                    NULL,
+                    NULL,
+                    7,
+                    0,
+                    K_NO_WAIT);
+
+    //(void)ble_init();
 
     k_thread_create(&serial_rx_thread_data,
                     serial_rx_stack,
@@ -1362,7 +1462,7 @@ int main(void)
                     NULL,
                     NULL,
                     NULL,
-                    7,
+                    8,
                     0,
                     K_NO_WAIT);
 
@@ -1373,21 +1473,21 @@ int main(void)
                     NULL,
                     NULL,
                     NULL,
-                    8,
+                    9,
                     0,
                     K_NO_WAIT);
 
-    k_thread_create(&uv_poll_thread_data,
+    /*k_thread_create(&uv_poll_thread_data,
                     uv_poll_stack,
                     K_THREAD_STACK_SIZEOF(uv_poll_stack),
                     uv_poll_thread,
                     NULL,
                     NULL,
                     NULL,
-                    9,
+                    10,
                     0,
                     K_NO_WAIT);
-
+*/
     k_thread_create(&heartbeat_thread_data,
                     heartbeat_stack,
                     K_THREAD_STACK_SIZEOF(heartbeat_stack),
@@ -1395,7 +1495,7 @@ int main(void)
                     NULL,
                     NULL,
                     NULL,
-                    10,
+                    11,
                     0,
                     K_NO_WAIT);
 
