@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,8 +41,7 @@ static const struct gpio_dt_spec alarm_gpio = GPIO_DT_SPEC_GET(ALARM_NODE, gpios
  * ============================================================ */
 
 static struct bt_conn *current_conn;
-
-static bool alarm_enabled = false;
+static bool alarm_enabled;
 
 /* ============================================================
  * NUS command queue
@@ -75,7 +75,7 @@ static const struct bt_data ad[] = {
 };
 
 static const struct bt_data sd[] = {
-    BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_NUS_VAL),
+    BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_NUS_SRV_VAL),
 };
 
 /* ============================================================
@@ -88,20 +88,6 @@ struct uv_reading {
     int32_t uv_index_x100;
 };
 
-/*
- * TODO:
- * Replace this function with real UV sensor code.
- *
- * If analog UV sensor:
- *   - enable CONFIG_ADC=y
- *   - create ADC overlay
- *   - use adc_read_dt()
- *
- * If I2C UV sensor:
- *   - enable CONFIG_I2C=y
- *   - create sensor devicetree node
- *   - use i2c_read/i2c_write or sensor API
- */
 static int uv_sensor_read(struct uv_reading *out)
 {
     if (out == NULL) {
@@ -110,7 +96,7 @@ static int uv_sensor_read(struct uv_reading *out)
 
     /*
      * Placeholder dummy values.
-     * Replace these with actual sensor values.
+     * Replace these with real ADC/I2C sensor values later.
      */
     out->raw = 1234;
     out->millivolts = 850;
@@ -120,7 +106,7 @@ static int uv_sensor_read(struct uv_reading *out)
 }
 
 /* ============================================================
- * Placeholder alarm/buzzer interface
+ * Alarm / buzzer interface
  * ============================================================ */
 
 static int alarm_init(void)
@@ -132,7 +118,6 @@ static int alarm_init(void)
     }
 
     int err = gpio_pin_configure_dt(&alarm_gpio, GPIO_OUTPUT_INACTIVE);
-
     if (err) {
         LOG_ERR("Failed to configure alarm GPIO: %d", err);
         return err;
@@ -169,7 +154,6 @@ static void nus_send_text(const char *text)
     }
 
     int err = bt_nus_send(current_conn, text, strlen(text));
-
     if (err) {
         LOG_WRN("bt_nus_send failed: %d", err);
     }
@@ -185,12 +169,10 @@ static void send_uv_response(void)
     char msg[160];
 
     int err = uv_sensor_read(&reading);
-
     if (err) {
         snprintf(msg, sizeof(msg),
                  "{\"type\":\"uv_error\",\"err\":%d}\n",
                  err);
-
         nus_send_text(msg);
         return;
     }
@@ -270,20 +252,6 @@ static struct app_command parse_command(const char *text)
         .alarm_value = false,
     };
 
-    /*
-     * Expected base-node commands:
-     *
-     *   UV_READ
-     *   ALARM 1
-     *   ALARM 0
-     *
-     * Extra accepted forms:
-     *
-     *   UV?
-     *   ALARM_ON
-     *   ALARM_OFF
-     */
-
     if (strcmp(text, "UV_READ") == 0 || strcmp(text, "UV?") == 0) {
         cmd.type = CMD_UV_READ;
         return cmd;
@@ -305,14 +273,14 @@ static struct app_command parse_command(const char *text)
 }
 
 static void nus_received_cb(struct bt_conn *conn,
-                            const void *data,
+                            const uint8_t *data,
                             uint16_t len)
 {
     ARG_UNUSED(conn);
 
     char rx_text[80];
 
-    size_t copy_len = MIN(len, sizeof(rx_text) - 1);
+    size_t copy_len = MIN((size_t)len, sizeof(rx_text) - 1);
     memcpy(rx_text, data, copy_len);
     rx_text[copy_len] = '\0';
 
@@ -331,7 +299,6 @@ static void nus_received_cb(struct bt_conn *conn,
     struct app_command cmd = parse_command(rx_text);
 
     int err = k_msgq_put(&command_queue, &cmd, K_NO_WAIT);
-
     if (err) {
         LOG_WRN("Command queue full");
         nus_send_text("{\"type\":\"error\",\"msg\":\"command_queue_full\"}\n");
@@ -346,6 +313,39 @@ static struct bt_nus_cb nus_cb = {
 };
 
 /* ============================================================
+ * BLE advertising restart
+ * ============================================================ */
+
+static int start_advertising(void);
+
+static void restart_adv_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+    (void)start_advertising();
+}
+
+K_WORK_DEFINE(restart_adv_work, restart_adv_work_handler);
+
+static int start_advertising(void)
+{
+    int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+                              ad, ARRAY_SIZE(ad),
+                              sd, ARRAY_SIZE(sd));
+
+    if (err == -EALREADY) {
+        return 0;
+    }
+
+    if (err) {
+        LOG_ERR("Advertising failed: %d", err);
+        return err;
+    }
+
+    LOG_INF("Advertising as %s", DEVICE_NAME);
+    return 0;
+}
+
+/* ============================================================
  * BLE connection callbacks
  * ============================================================ */
 
@@ -354,6 +354,10 @@ static void connected(struct bt_conn *conn, uint8_t err)
     if (err) {
         LOG_ERR("BLE connection failed: %u", err);
         return;
+    }
+
+    if (current_conn != NULL) {
+        bt_conn_unref(current_conn);
     }
 
     current_conn = bt_conn_ref(conn);
@@ -371,6 +375,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         bt_conn_unref(current_conn);
         current_conn = NULL;
     }
+
+    k_work_submit(&restart_adv_work);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -387,7 +393,6 @@ static int ble_init(void)
     int err;
 
     err = bt_enable(NULL);
-
     if (err) {
         LOG_ERR("Bluetooth init failed: %d", err);
         return err;
@@ -395,23 +400,16 @@ static int ble_init(void)
 
     LOG_INF("Bluetooth initialized");
 
-    err = bt_nus_init(&nus_cb);
-
+    err = bt_nus_cb_register(&nus_cb, NULL);
     if (err) {
-        LOG_ERR("NUS init failed: %d", err);
+        LOG_ERR("NUS callback register failed: %d", err);
         return err;
     }
 
-    err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
-                          ad, ARRAY_SIZE(ad),
-                          sd, ARRAY_SIZE(sd));
-
+    err = start_advertising();
     if (err) {
-        LOG_ERR("Advertising failed: %d", err);
         return err;
     }
-
-    LOG_INF("Advertising as %s", DEVICE_NAME);
 
     return 0;
 }
@@ -422,27 +420,29 @@ static int ble_init(void)
 
 int main(void)
 {
-    LOG_INF("UV alarm NUS node starting");
-
     int err;
+
+    LOG_INF("UV alarm NUS node starting");
 
     k_work_init(&command_work, command_work_handler);
 
     err = alarm_init();
-
     if (err) {
         LOG_ERR("Alarm init failed: %d", err);
         return err;
     }
 
     err = ble_init();
-
     if (err) {
         LOG_ERR("BLE init failed: %d", err);
         return err;
     }
 
     LOG_INF("UV alarm NUS node ready");
+
+    while (true) {
+        k_sleep(K_SECONDS(60));
+    }
 
     return 0;
 }
