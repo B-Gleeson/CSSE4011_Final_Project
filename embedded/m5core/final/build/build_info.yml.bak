@@ -1,0 +1,5 @@
+west:
+  command: /home/oscar/csse4011/.venv/bin/west build -p always -b m5stack_core2/esp32/procpu
+    .
+  topdir: /home/oscar/csse4011
+  version: 1.5.0

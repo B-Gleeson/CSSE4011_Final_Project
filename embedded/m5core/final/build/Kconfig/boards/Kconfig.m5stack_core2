@@ -1,0 +1,2 @@
+# Load board Kconfig descriptions.
+osource "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/Kconfig.m5stack_core2"

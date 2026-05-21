@@ -1,0 +1,51 @@
+cmake:
+  application:
+    configuration-dir: '/home/oscar/csse4011/firmware/final'
+    source-dir: '/home/oscar/csse4011/firmware/final'
+  board:
+    name: 'm5stack_core2'
+    path:
+     - '/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2'
+    qualifiers: 'esp32/procpu'
+    revision: ''
+  devicetree:
+    bindings-dirs:
+     - '/home/oscar/csse4011/firmware/dts/bindings'
+     - '/home/oscar/csse4011/zephyr/dts/bindings'
+    files:
+     - '/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts'
+    include-dirs:
+     - '/home/oscar/csse4011/firmware/include'
+     - '/home/oscar/csse4011/firmware/dts'
+     - '/home/oscar/csse4011/modules/hal/stm32/dts'
+     - '/home/oscar/csse4011/zephyr/include'
+     - '/home/oscar/csse4011/zephyr/include/zephyr'
+     - '/home/oscar/csse4011/zephyr/dts/common'
+     - '/home/oscar/csse4011/zephyr/dts/vendor'
+     - '/home/oscar/csse4011/zephyr/dts/rx'
+     - '/home/oscar/csse4011/zephyr/dts/x86'
+     - '/home/oscar/csse4011/zephyr/dts/xtensa'
+     - '/home/oscar/csse4011/zephyr/dts/sparc'
+     - '/home/oscar/csse4011/zephyr/dts/riscv'
+     - '/home/oscar/csse4011/zephyr/dts/posix'
+     - '/home/oscar/csse4011/zephyr/dts/arm64'
+     - '/home/oscar/csse4011/zephyr/dts/arm'
+     - '/home/oscar/csse4011/zephyr/dts/arc'
+     - '/home/oscar/csse4011/zephyr/dts'
+  kconfig:
+    files:
+     - '/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu_defconfig'
+     - '/home/oscar/csse4011/firmware/final/prj.conf'
+    user-files:
+     - '/home/oscar/csse4011/firmware/final/prj.conf'
+  toolchain:
+    name: 'zephyr'
+    path: '/home/oscar/zephyr-sdk-0.17.4'
+  zephyr:
+    version: '4.3.0'
+    zephyr-base: '/home/oscar/csse4011/zephyr'
+version: '0.1.0'
+west:
+  command: '/home/oscar/csse4011/.venv/bin/west build -p always -b m5stack_core2/esp32/procpu .'
+  topdir: '/home/oscar/csse4011'
+  version: '1.5.0'

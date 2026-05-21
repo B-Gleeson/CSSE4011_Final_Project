@@ -1,0 +1,1139 @@
+# 0 "/home/oscar/csse4011/zephyr/misc/empty_file.c"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 1
+
+
+
+
+
+/dts-v1/;
+
+# 1 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_d0wd_v3.dtsi" 1 3 4
+
+
+
+
+
+
+# 1 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 1 3 4
+
+
+
+
+
+
+# 1 "/home/oscar/csse4011/zephyr/dts/common/mem.h" 1 3 4
+# 8 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/dts/common/freq.h" 1 3 4
+# 9 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/dts/xtensa/xtensa.dtsi" 1 3 4
+
+
+
+
+
+
+# 1 "/home/oscar/csse4011/zephyr/dts/common/skeleton.dtsi" 1 3 4
+# 9 "/home/oscar/csse4011/zephyr/dts/common/skeleton.dtsi" 3 4
+/ {
+ #address-cells = <1>;
+ #size-cells = <1>;
+
+ chosen {};
+
+ aliases {};
+};
+# 8 "/home/oscar/csse4011/zephyr/dts/xtensa/xtensa.dtsi" 2 3 4
+
+/ {
+ soc {
+  #address-cells = <1>;
+  #size-cells = <1>;
+  compatible = "simple-bus";
+  ranges;
+ };
+};
+# 10 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/adc/adc.h" 1 3 4
+# 9 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/adc/adc.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/dt-util.h" 1 3 4
+# 19 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/dt-util.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_macro.h" 1 3 4
+# 34 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_macro.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 1 3 4
+# 18 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_loops.h" 1 3 4
+# 1083 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_loops.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_listify.h" 1 3 4
+# 1084 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_loops.h" 2 3 4
+# 19 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 2 3 4
+# 162 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal_is_eq.h" 1 3 4
+# 163 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 2 3 4
+# 193 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal_util_inc.h" 1 3 4
+# 194 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 2 3 4
+
+
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal_util_dec.h" 1 3 4
+# 197 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 2 3 4
+
+
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal_util_x2.h" 1 3 4
+# 200 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_internal.h" 2 3 4
+# 35 "/home/oscar/csse4011/zephyr/include/zephyr/sys/util_macro.h" 2 3 4
+# 20 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/dt-util.h" 2 3 4
+# 10 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/adc/adc.h" 2 3 4
+# 11 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/gpio/gpio.h" 1 3 4
+# 12 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/i2c/i2c.h" 1 3 4
+# 13 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/clock/esp32_clock.h" 1 3 4
+# 14 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/interrupt-controller/esp-xtensa-intmux.h" 1 3 4
+# 15 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/pinctrl/esp32-pinctrl.h" 1 3 4
+# 16 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/pwm/pwm.h" 1 3 4
+# 17 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_common.dtsi" 2 3 4
+
+/ {
+ chosen {
+  zephyr,canbus = &twai;
+  zephyr,entropy = &trng0;
+  zephyr,flash-controller = &flash;
+  zephyr,bt-hci = &esp32_bt_hci;
+ };
+
+ cpus {
+  #address-cells = <1>;
+  #size-cells = <0>;
+
+  cpu0: cpu@0 {
+   device_type = "cpu";
+   compatible = "espressif,xtensa-lx6";
+   reg = <0>;
+   cpu-power-states = <&light_sleep &deep_sleep>;
+   clock-source = <1U>;
+   clock-frequency = <(((240) * 1000) * 1000)>;
+   xtal-freq = <(((40) * 1000) * 1000)>;
+  };
+
+  cpu1: cpu@1 {
+   device_type = "cpu";
+   compatible = "espressif,xtensa-lx6";
+   reg = <1>;
+   clock-source = <1U>;
+   clock-frequency = <(((240) * 1000) * 1000)>;
+   xtal-freq = <(((40) * 1000) * 1000)>;
+  };
+
+  power-states {
+   light_sleep: light_sleep {
+    compatible = "zephyr,power-state";
+    power-state-name = "standby";
+    min-residency-us = <200>;
+    exit-latency-us = <60>;
+   };
+
+   deep_sleep: deep_sleep {
+    compatible = "zephyr,power-state";
+    power-state-name = "soft-off";
+    min-residency-us = <2000>;
+    exit-latency-us = <212>;
+   };
+  };
+ };
+
+ wifi: wifi {
+  compatible = "espressif,esp32-wifi";
+  status = "disabled";
+ };
+
+ esp32_bt_hci: esp32_bt_hci {
+  compatible = "espressif,esp32-bt-hci";
+  status = "disabled";
+ };
+
+ eth: eth {
+  compatible = "espressif,esp32-eth";
+  interrupts = <38 0 0>;
+  interrupt-parent = <&intc>;
+  clocks = <&clock 23>;
+  status = "disabled";
+ };
+
+ mdio: mdio {
+  compatible = "espressif,esp32-mdio";
+  clocks = <&clock 23>;
+  status = "disabled";
+  #address-cells = <1>;
+  #size-cells = <0>;
+ };
+
+ pinctrl: pin-controller {
+  compatible = "espressif,esp32-pinctrl";
+  status = "okay";
+ };
+
+ clock: clock {
+  compatible = "espressif,esp32-clock";
+  fast-clk-src = <1>;
+  slow-clk-src = <0>;
+  #clock-cells = <1>;
+  status = "okay";
+ };
+
+ soc {
+  sram0: memory@40070000 {
+   compatible = "zephyr,memory-region", "mmio-sram";
+   reg = <0x40070000 ((192) * 1024)>;
+   zephyr,memory-region = "SRAM0";
+  };
+
+  sram1: memory@3ffe0000 {
+   compatible = "zephyr,memory-region", "mmio-sram";
+   reg = <0x3ffe0000 ((128) * 1024)>;
+   zephyr,memory-region = "SRAM1";
+  };
+
+  sram2: memory@3ffae000 {
+   compatible = "zephyr,memory-region", "mmio-sram";
+   reg = <0x3ffae000 ((200) * 1024)>;
+   zephyr,memory-region = "SRAM2";
+  };
+
+  dcache0: dcache0@3f400000 {
+   compatible = "zephyr,memory-region", "mmio-sram";
+   reg = <0x3f400000 (((4) * 1024) * 1024)>;
+   zephyr,memory-region = "DCACHE0";
+  };
+
+  dcache1: dcache1@3f800000 {
+   compatible = "zephyr,memory-region", "mmio-sram";
+   reg = <0x3f800000 (((4) * 1024) * 1024)>;
+   zephyr,memory-region = "DCACHE1";
+
+   psram0: psram0 {
+    compatible = "espressif,esp32-psram";
+    size = <0x0>;
+   };
+  };
+
+  icache0: icache0@400d0000 {
+   compatible = "zephyr,memory-region", "mmio-sram";
+   reg = <0x400d0000 ((11456) * 1024)>;
+   zephyr,memory-region = "ICACHE0";
+  };
+
+  ipmmem0: memory@3ffe5230 {
+   compatible = "mmio-sram";
+   reg = <0x3ffe5230 0x400>;
+  };
+
+  shm0: memory@3ffe5630 {
+   compatible = "mmio-sram";
+   reg = <0x3ffe5630 0x4000>;
+  };
+
+  ipm0: ipm@3ffe9630 {
+   compatible = "espressif,esp32-ipm";
+   reg = <0x3ffe9630 0x8>;
+   status = "disabled";
+   shared-memory = <&ipmmem0>;
+   shared-memory-size = <0x400>;
+   interrupts = <24 0 0>,
+         <25 0 0>;
+   interrupt-parent = <&intc>;
+  };
+
+  mbox0: mbox@3ffe9638 {
+   compatible = "espressif,mbox-esp32";
+   reg = <0x3ffe9638 0x8>;
+   status = "disabled";
+   shared-memory = <&ipmmem0>;
+   shared-memory-size = <0x400>;
+   interrupts = <24 0 0>,
+         <25 0 0>;
+   interrupt-parent = <&intc>;
+   #mbox-cells = <1>;
+  };
+
+  intc: interrupt-controller@3ff00104 {
+   #interrupt-cells = <3>;
+   #address-cells = <0>;
+   compatible = "espressif,esp32-intc";
+   interrupt-controller;
+   reg = <0x3ff00104 0x114>;
+   status = "okay";
+  };
+
+  rtc_timer: rtc_timer@3ff48004 {
+   reg = <0x3ff48004 0xC>;
+   compatible = "espressif,esp32-rtc-timer";
+   clocks = <&clock 34>;
+   interrupts = <46 0 0>;
+   interrupt-parent = <&intc>;
+   status = "disabled";
+  };
+
+  flash: flash-controller@3ff42000 {
+   compatible = "espressif,esp32-flash-controller";
+   reg = <0x3ff42000 0x1000>;
+   #address-cells = <1>;
+   #size-cells = <1>;
+
+   flash0: flash@0 {
+    compatible = "soc-nv-flash";
+    erase-block-size = <4096>;
+    write-block-size = <4>;
+
+   };
+  };
+
+  ipi0: ipi@3f4c0058 {
+   compatible = "espressif,crosscore-interrupt";
+   reg = <0x3f4c0058 0x4>;
+   interrupts = <24 0 0>;
+   interrupt-parent = <&intc>;
+  };
+
+  ipi1: ipi@3f4c005c {
+   compatible = "espressif,crosscore-interrupt";
+   reg = <0x3f4c005c 0x4>;
+   interrupts = <25 0 0>;
+   interrupt-parent = <&intc>;
+  };
+
+  uart0: uart@3ff40000 {
+   compatible = "espressif,esp32-uart";
+   reg = <0x3ff40000 0x400>;
+   interrupts = <34 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 1>;
+   status = "disabled";
+  };
+
+  uart1: uart@3ff50000 {
+   compatible = "espressif,esp32-uart";
+   reg = <0x3ff50000 0x400>;
+   interrupts = <35 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 2>;
+   status = "disabled";
+  };
+
+  uart2: uart@3ff6e000 {
+   compatible = "espressif,esp32-uart";
+   reg = <0x3ff6E000 0x400>;
+   interrupts = <36 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 3>;
+   status = "disabled";
+  };
+
+  pcnt: pcnt@3ff57000 {
+   compatible = "espressif,esp32-pcnt";
+   reg = <0x3ff57000 0x1000>;
+   interrupts = <48 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 15>;
+   status = "disabled";
+  };
+
+  ledc0: ledc@3ff59000 {
+   compatible = "espressif,esp32-ledc";
+   #pwm-cells = <3>;
+   reg = <0x3ff59000 0x800>;
+   clocks = <&clock 0>;
+   status = "disabled";
+  };
+
+  mcpwm0: mcpwm@3ff5e000 {
+   compatible = "espressif,esp32-mcpwm";
+   reg = <0x3ff5e000 0x1000>;
+   interrupts = <39 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 10>;
+   #pwm-cells = <3>;
+   status = "disabled";
+  };
+
+  mcpwm1: mcpwm@3ff6c000 {
+   compatible = "espressif,esp32-mcpwm";
+   reg = <0x3ff6c000 0x1000>;
+   interrupts = <40 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 11>;
+   #pwm-cells = <3>;
+   status = "disabled";
+  };
+
+  gpio: gpio {
+   compatible = "simple-bus";
+   gpio-map-mask = <0xffffffe0 0xffffffc0>;
+   gpio-map-pass-thru = <0x1f 0x3f>;
+   gpio-map = <0x00 0x0 &gpio0 0x0 0x0
+        0x20 0x0 &gpio1 0x0 0x0>;
+   #gpio-cells = <2>;
+   #address-cells = <1>;
+   #size-cells = <1>;
+   ranges;
+
+   gpio0: gpio@3ff44000 {
+    compatible = "espressif,esp32-gpio";
+    gpio-controller;
+    #gpio-cells = <2>;
+    reg = <0x3ff44000 0x800>;
+    interrupts = <22 0 0>;
+    interrupt-parent = <&intc>;
+
+
+
+
+
+    ngpios = <32>;
+   };
+
+   gpio1: gpio@3ff44800 {
+    compatible = "espressif,esp32-gpio";
+    gpio-controller;
+    #gpio-cells = <2>;
+    reg = <0x3ff44800 0x800>;
+    interrupts = <22 0 0>;
+    interrupt-parent = <&intc>;
+    ngpios = <8>;
+   };
+  };
+
+  touch: touch@3ff48858 {
+   compatible = "espressif,esp32-touch";
+   reg = <0x3ff48858 0x38>;
+   interrupts = <46 0 0>;
+   interrupt-parent = <&intc>;
+   status = "disabled";
+  };
+
+  i2c0: i2c@3ff53000 {
+   compatible = "espressif,esp32-i2c";
+   #address-cells = <1>;
+   #size-cells = <0>;
+   reg = <0x3ff53000 0x1000>;
+   interrupts = <49 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 4>;
+   status = "disabled";
+  };
+
+  i2c1: i2c@3ff67000 {
+   compatible = "espressif,esp32-i2c";
+   #address-cells = <1>;
+   #size-cells = <0>;
+   reg = <0x3ff67000 0x1000>;
+   interrupts = <50 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 5>;
+   status = "disabled";
+  };
+
+  i2s0: i2s@3ff4f000 {
+   compatible = "espressif,esp32-i2s";
+   #address-cells = <1>;
+   #size-cells = <0>;
+   reg = <0x3ff4f000 0x1000>;
+   interrupts = <32 0 0>,
+         <32 0 0>;
+   interrupt-names = "rx", "tx";
+   interrupt-parent = <&intc>;
+   clocks = <&clock 6>;
+   unit = <0>;
+   status = "disabled";
+  };
+
+  i2s1: i2s@3ff6d000 {
+   compatible = "espressif,esp32-i2s";
+   #address-cells = <1>;
+   #size-cells = <0>;
+   reg = <0x3ff6d000 0x1000>;
+   interrupts = <33 0 0>,
+         <33 0 0>;
+   interrupt-names = "rx", "tx";
+   interrupt-parent = <&intc>;
+   clocks = <&clock 7>;
+   unit = <1>;
+   status = "disabled";
+  };
+
+  trng0: trng@3ff75144 {
+   compatible = "espressif,esp32-trng";
+   reg = <0x3FF75144 0x4>;
+   clocks = <&clock 24>;
+   status = "disabled";
+  };
+
+  wdt0: watchdog@3ff5f048 {
+   compatible = "espressif,esp32-watchdog";
+   reg = <0x3ff5f048 0x20>;
+   interrupts = <16 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 8>;
+   status = "okay";
+  };
+
+  wdt1: watchdog@3ff60048 {
+   compatible = "espressif,esp32-watchdog";
+   reg = <0x3ff60048 0x20>;
+   interrupts = <20 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 9>;
+   status = "disabled";
+  };
+
+  spi2: spi@3ff64000 {
+   compatible = "espressif,esp32-spi";
+   reg = <0x3ff64000 ((4) * 1024)>;
+   interrupts = <30 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 17>;
+   dma-clk = <19>;
+   dma-host = <0>;
+   status = "disabled";
+  };
+
+  spi3: spi@3ff65000 {
+   compatible = "espressif,esp32-spi";
+   reg = <0x3ff65000 ((4) * 1024)>;
+   interrupts = <31 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 18>;
+   dma-clk = <19>;
+   dma-host = <1>;
+   status = "disabled";
+  };
+
+  twai: can@3ff6b000 {
+   compatible = "espressif,esp32-twai";
+   reg = <0x3ff6b000 ((4) * 1024)>;
+   interrupts = <45 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 22>;
+   status = "disabled";
+  };
+
+  timer0: counter@3ff5f000 {
+   compatible = "espressif,esp32-timer";
+   reg = <0x3ff5f000 ((4) * 1024)>;
+   clocks = <&clock 8>;
+   group = <0>;
+   index = <0>;
+   interrupts = <14 0 0>;
+   interrupt-parent = <&intc>;
+   status = "disabled";
+
+   counter {
+    compatible = "espressif,esp32-counter";
+    status = "disabled";
+   };
+  };
+
+  timer1: counter@3ff5f024 {
+   compatible = "espressif,esp32-timer";
+   reg = <0x3ff5f024 ((4) * 1024)>;
+   clocks = <&clock 8>;
+   group = <0>;
+   index = <1>;
+   interrupts = <15 0 0>;
+   interrupt-parent = <&intc>;
+   status = "disabled";
+
+   counter {
+    compatible = "espressif,esp32-counter";
+    status = "disabled";
+   };
+  };
+
+  timer2: counter@3ff60000 {
+   compatible = "espressif,esp32-timer";
+   reg = <0x3ff60000 ((4) * 1024)>;
+   clocks = <&clock 9>;
+   group = <1>;
+   index = <0>;
+   interrupts = <18 0 0>;
+   interrupt-parent = <&intc>;
+   status = "disabled";
+
+   counter {
+    compatible = "espressif,esp32-counter";
+    status = "disabled";
+   };
+  };
+
+  timer3: counter@3ff60024 {
+   compatible = "espressif,esp32-timer";
+   reg = <0x3ff60024 ((4) * 1024)>;
+   clocks = <&clock 9>;
+   group = <1>;
+   index = <1>;
+   interrupts = <19 0 0>;
+   interrupt-parent = <&intc>;
+   status = "disabled";
+
+   counter {
+    compatible = "espressif,esp32-counter";
+    status = "disabled";
+   };
+  };
+
+  dac: dac@3ff48800 {
+   compatible = "espressif,esp32-dac";
+   reg = <0x3ff48800 0x100>;
+   interrupts = <46 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 33>;
+   #io-channel-cells = <1>;
+   status = "disabled";
+  };
+
+  adc0: adc@3ff48800 {
+   compatible = "espressif,esp32-adc";
+   reg = <0x3ff48800 10>;
+   clocks = <&clock 33>;
+   interrupt-parent = <&intc>;
+   unit = <1>;
+   channel-count = <8>;
+   #io-channel-cells = <1>;
+   status = "disabled";
+  };
+
+  adc1: adc@3ff48890 {
+   compatible = "espressif,esp32-adc";
+   reg = <0x3ff48890 10>;
+   clocks = <&clock 33>;
+   unit = <2>;
+   channel-count = <10>;
+   #io-channel-cells = <1>;
+   status = "disabled";
+  };
+
+  sdhc: sdhc@3ff68000 {
+   compatible = "espressif,esp32-sdhc";
+   reg = <0x3ff68000 0x1000>;
+   interrupts = <37 0 0>;
+   interrupt-parent = <&intc>;
+   clocks = <&clock 20>;
+   #address-cells = <1>;
+   #size-cells = <0>;
+
+   sdhc0: sdhc@0 {
+    compatible = "espressif,esp32-sdhc-slot";
+    reg = <0>;
+    status = "disabled";
+   };
+
+   sdhc1: sdhc@1 {
+    compatible = "espressif,esp32-sdhc-slot";
+    reg = <1>;
+    status = "disabled";
+   };
+  };
+
+  sha: sha@3ff03000 {
+   compatible = "espressif,esp32-sha";
+   reg = <0x3ff03000 0x100>;
+   clocks = <&clock 31>;
+   status = "okay";
+  };
+
+  aes: aes@3ff01000 {
+   compatible = "espressif,esp32-aes";
+   reg = <0x3ff01000 0x1000>;
+   clocks = <&clock 30>;
+   status = "okay";
+  };
+ };
+};
+# 8 "/home/oscar/csse4011/zephyr/dts/xtensa/espressif/esp32/esp32_d0wd_v3.dtsi" 2 3 4
+
+
+&gpio0 {
+ gpio-reserved-ranges = <20 1>, <24 1>, <28 4>;
+};
+# 9 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+# 1 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2-pinctrl.dtsi" 1
+
+
+
+
+
+
+
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h" 1 3 4
+# 9 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2-pinctrl.dtsi" 2
+
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/pinctrl/esp32-gpio-sigmap.h" 1 3 4
+# 11 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2-pinctrl.dtsi" 2
+
+&pinctrl {
+ uart0_tx_gpio1: uart0_tx_gpio1 {
+  pinmux = <(((1 & 0x3FU) << 0U) | ((0x1FFU & 0x1FFU) << 6U) | ((14 & 0x1FFU) << 15U))>;
+ };
+
+ uart0_rx_gpio3: uart0_rx_gpio3 {
+  pinmux = <(((3 & 0x3FU) << 0U) | ((14 & 0x1FFU) << 6U) | ((0x1FFU & 0x1FFU) << 15U))>;
+  bias-pull-up;
+ };
+
+ uart1_rx_gpio33: uart1_rx_gpio33 {
+  pinmux = <(((33 & 0x3FU) << 0U) | ((17 & 0x1FFU) << 6U) | ((0x1FFU & 0x1FFU) << 15U))>;
+ };
+
+ uart2_rx_gpio13: uart2_rx_gpio13 {
+  pinmux = <(((13 & 0x3FU) << 0U) | ((198 & 0x1FFU) << 6U) | ((0x1FFU & 0x1FFU) << 15U))>;
+ };
+
+ uart2_tx_gpio14: uart2_rx_gpio14 {
+  pinmux = <(((14 & 0x3FU) << 0U) | ((0x1FFU & 0x1FFU) << 6U) | ((198 & 0x1FFU) << 15U))>;
+ };
+
+ uart1_tx_gpio32: uart1_tx_gpio32 {
+  pinmux = <(((32 & 0x3FU) << 0U) | ((0x1FFU & 0x1FFU) << 6U) | ((17 & 0x1FFU) << 15U))>;
+ };
+
+ spim3_default: spim3_default {
+  group1 {
+   pinmux = <(((38 & 0x3FU) << 0U) | ((64 & 0x1FFU) << 6U) | ((0x1FFU & 0x1FFU) << 15U))>,
+     <(((18 & 0x3FU) << 0U) | ((0x1FFU & 0x1FFU) << 6U) | ((63 & 0x1FFU) << 15U))>;
+  };
+
+  group2 {
+   pinmux = <(((23 & 0x3FU) << 0U) | ((0x1FFU & 0x1FFU) << 6U) | ((65 & 0x1FFU) << 15U))>;
+   output-low;
+  };
+ };
+
+ i2c0_default: i2c0_default {
+  group1 {
+   pinmux = <(((21 & 0x3FU) << 0U) | ((30 & 0x1FFU) << 6U) | ((30 & 0x1FFU) << 15U))>,
+     <(((22 & 0x3FU) << 0U) | ((29 & 0x1FFU) << 6U) | ((29 & 0x1FFU) << 15U))>;
+   drive-open-drain;
+   output-high;
+  };
+ };
+
+ i2c1_default: i2c1_default {
+  group1 {
+   pinmux = <(((32 & 0x3FU) << 0U) | ((96 & 0x1FFU) << 6U) | ((96 & 0x1FFU) << 15U))>,
+     <(((33 & 0x3FU) << 0U) | ((95 & 0x1FFU) << 6U) | ((95 & 0x1FFU) << 15U))>;
+   drive-open-drain;
+   output-high;
+  };
+ };
+};
+# 10 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+# 1 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/grove_connectors.dtsi" 1
+
+
+
+
+
+
+/ {
+ grove_header: grove_header {
+  compatible = "grove-header";
+  #gpio-cells = <2>;
+  gpio-map-mask = <0xffffffff 0xffffffc0>;
+  gpio-map-pass-thru = <0 0x3f>;
+  gpio-map = <0 0 &gpio1 1 0>,
+      <1 0 &gpio1 0 0>;
+ };
+};
+
+zephyr_i2c: &i2c1 {};
+
+grove_uart: &uart1 {};
+# 11 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+# 1 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_mbus_connectors.dtsi" 1
+
+
+
+
+
+/ {
+ m5stack_mbus_header: m5stack_mbus_connector {
+  compatible = "m5stack,mbus-header";
+  #gpio-cells = <2>;
+  gpio-map-mask = <0xffffffff 0xffffffc0>;
+  gpio-map-pass-thru = <0 0x3f>;
+  gpio-map =
+      <1 0 &gpio1 4 0>,
+
+      <3 0 &gpio1 5 0>,
+
+
+      <6 0 &gpio0 23 0>,
+      <7 0 &gpio0 25 0>,
+      <8 0 &gpio1 7 0>,
+      <9 0 &gpio0 26 0>,
+      <10 0 &gpio0 18 0>,
+
+      <12 0 &gpio0 3 0>,
+      <13 0 &gpio0 1 0>,
+      <14 0 &gpio0 13 0>,
+      <15 0 &gpio0 14 0>,
+      <16 0 &gpio0 21 0>,
+      <17 0 &gpio0 22 0>,
+      <18 0 &gpio1 0 0>,
+      <19 0 &gpio1 1 0>,
+      <20 0 &gpio0 27 0>,
+      <21 0 &gpio0 19 0>,
+      <22 0 &gpio0 2 0>,
+      <23 0 &gpio0 0 0>,
+
+      <25 0 &gpio1 3 0>;
+
+
+
+
+ };
+};
+
+m5stack_mbus_i2c0: &i2c0 {};
+
+m5stack_mbus_i2c1: &i2c1 {};
+
+m5stack_mbus_uart0: &uart1 {};
+
+m5stack_mbus_uart1: &uart2 {};
+
+m5stack_mbus_spi: &spi3 {};
+# 12 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/display/ili9xxx.h" 1 3 4
+# 13 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+# 1 "/home/oscar/csse4011/zephyr/include/zephyr/dt-bindings/regulator/axp192.h" 1 3 4
+# 14 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+# 1 "/home/oscar/csse4011/zephyr/dts/vendor/espressif/partitions_0x1000_amp.dtsi" 1 3 4
+
+
+
+
+
+
+# 1 "/home/oscar/csse4011/zephyr/dts/vendor/espressif/partitions_0x1000_amp_4M.dtsi" 1 3 4
+
+
+
+
+
+
+&flash0 {
+ partitions {
+  compatible = "fixed-partitions";
+  #address-cells = <1>;
+  #size-cells = <1>;
+
+  boot_partition: partition@1000 {
+   label = "mcuboot";
+   reg = <0x1000 ((60) * 1024)>;
+  };
+
+  sys_partition: partition@10000 {
+   label = "sys";
+   reg = <0x10000 ((64) * 1024)>;
+  };
+
+  slot0_partition: partition@20000 {
+   label = "image-0";
+   reg = <0x20000 ((1344) * 1024)>;
+  };
+
+  slot1_partition: partition@170000 {
+   label = "image-1";
+   reg = <0x170000 ((1344) * 1024)>;
+  };
+
+  slot0_appcpu_partition: partition@2c0000 {
+   label = "image-0-appcpu";
+   reg = <0x2C0000 ((448) * 1024)>;
+  };
+
+  slot1_appcpu_partition: partition@330000 {
+   label = "image-1-appcpu";
+   reg = <0x330000 ((448) * 1024)>;
+  };
+
+  slot0_lpcore_partition: partition@3a0000 {
+   label = "image-0-lpcore";
+   reg = <0x3A0000 ((32) * 1024)>;
+  };
+
+  slot1_lpcore_partition: partition@3a8000 {
+   label = "image-1-lpcore";
+   reg = <0x3A8000 ((32) * 1024)>;
+  };
+
+  storage_partition: partition@3b0000 {
+   label = "storage";
+   reg = <0x3B0000 ((192) * 1024)>;
+  };
+
+  scratch_partition: partition@3e0000 {
+   label = "image-scratch";
+   reg = <0x3E0000 ((124) * 1024)>;
+  };
+
+  coredump_partition: partition@3ff000 {
+   label = "coredump";
+   reg = <0x3FF000 ((4) * 1024)>;
+  };
+ };
+};
+# 8 "/home/oscar/csse4011/zephyr/dts/vendor/espressif/partitions_0x1000_amp.dtsi" 2 3 4
+# 15 "/home/oscar/csse4011/zephyr/boards/m5stack/m5stack_core2/m5stack_core2_procpu.dts" 2
+
+/ {
+ model = "M5Stack Core2 PROCPU";
+ compatible = "m5stack,core2";
+
+ aliases {
+  pwr-led = &pwr_led;
+  uart-0 = &uart0;
+  i2c-0 = &i2c0;
+  watchdog0 = &wdt0;
+  rtc = &pfc8563_rtc;
+  led0 = &led_pwr;
+  sdhc0 = &sd0;
+ };
+
+ chosen {
+  zephyr,sram = &sram1;
+  zephyr,console = &uart0;
+  zephyr,shell-uart = &uart0;
+  zephyr,flash = &flash0;
+  zephyr,display = &ili9342c;
+  zephyr,code-partition = &slot0_partition;
+  zephyr,rtc = &pfc8563_rtc;
+  zephyr,bt-hci = &esp32_bt_hci;
+  zephyr,touch = &ft5336_touch;
+ };
+
+ leds {
+  compatible = "gpio-leds";
+
+  led_pwr: led_pwr {
+   gpios = <&axp192_gpio 1 (((1 << 1) | (1 << 2)) | (1 << 0))>;
+   label = "Power LED";
+  };
+ };
+
+ lvgl_pointer {
+  compatible = "zephyr,lvgl-pointer-input";
+  input = <&ft5336_touch>;
+  swap-xy;
+ };
+
+ mipi_dbi {
+  compatible = "zephyr,mipi-dbi-spi";
+  dc-gpios = <&gpio0 15 (0 << 0)>;
+  reset-gpios = <&axp192_gpio 4 (((1 << 1) | (1 << 2)) | (1 << 0))>;
+  spi-dev = <&spi3>;
+  write-only;
+  #address-cells = <1>;
+  #size-cells = <0>;
+
+  ili9342c: ili9342c@0 {
+   compatible = "ilitek,ili9342c";
+   mipi-max-frequency = <30000000>;
+   reg = <0>;
+   vin-supply = <&lcd_bg>;
+   pixel-format = <0U>;
+   display-inversion;
+   width = <320>;
+   height = <240>;
+   rotation = <0>;
+  };
+ };
+
+ bus_5v: bus_5v {
+  compatible = "regulator-fixed";
+  regulator-name = "bus_5v";
+  enable-gpios = <&axp192_gpio 5 (0 << 0)>;
+ };
+};
+
+&flash0 {
+ reg = <0x0 (((16) * 1024) * 1024)>;
+};
+
+&psram0 {
+ size = <(((8) * 1024) * 1024)>;
+};
+
+&uart0 {
+ status = "okay";
+ current-speed = <115200>;
+ pinctrl-0 = <&uart0_tx_gpio1 &uart0_rx_gpio3>;
+ pinctrl-names = "default";
+};
+
+&uart1 {
+ status = "disabled";
+ current-speed = <115200>;
+ pinctrl-0 = <&uart1_rx_gpio33 &uart1_tx_gpio32>;
+ pinctrl-names = "default";
+};
+
+&gpio0 {
+ status = "okay";
+};
+
+&gpio1 {
+ status = "okay";
+};
+
+&i2c0 {
+ status = "okay";
+ clock-frequency = <400000>;
+ sda-gpios = <&gpio0 21 ((1 << 1) | (1 << 2))>;
+ scl-gpios = <&gpio0 22 ((1 << 1) | (1 << 2))>;
+ pinctrl-0 = <&i2c0_default>;
+ scl-timeout-us = <0>;
+ pinctrl-names = "default";
+
+ pfc8563_rtc: pfc8563@51 {
+  compatible = "nxp,pcf8563";
+  reg = <0x51>;
+  status = "okay";
+ };
+
+ axp192_pmic: axp192@34 {
+  compatible = "x-powers,axp192";
+  reg = <0x34>;
+  status = "okay";
+
+  axp192_regulator: axp192_regulator {
+   compatible = "x-powers,axp192-regulator";
+   status = "okay";
+
+   vdd_mcu: DCDC1 {
+    regulator-init-microvolt = <3350000>;
+    regulator-min-microvolt = <3200000>;
+    regulator-max-microvolt = <3400000>;
+    regulator-initial-mode = <0x00U>;
+    regulator-boot-on;
+    regulator-always-on;
+   };
+
+   lcd_bg: DCDC3 {
+    regulator-init-microvolt = <2800000>;
+    regulator-min-microvolt = <2500000>;
+    regulator-max-microvolt = <3300000>;
+    regulator-boot-on;
+   };
+
+   v_peri: LDO2 {
+    regulator-init-microvolt = <3300000>;
+    regulator-min-microvolt = <3200000>;
+    regulator-max-microvolt = <3300000>;
+    regulator-boot-on;
+   };
+
+   vib_motor: LDO3 {
+    regulator-init-microvolt = <2800000>;
+   };
+  };
+
+  axp192_gpio: axp192_gpio {
+   compatible = "x-powers,axp192-gpio";
+   gpio-controller;
+   #gpio-cells = <2>;
+   ngpios = <6>;
+   status = "okay";
+
+   pwr_led: axp192_gpio1 {
+    gpio-hog;
+    gpios = <1 (((1 << 1) | (1 << 2)) | (1 << 0))>;
+    output-high;
+    line-name = "pwr-led";
+   };
+
+   bus_pwr_en: axp192_gpio0 {
+    gpio-hog;
+    gpios = <0 0>;
+    output-high;
+    line-name = "bus_pwr_en";
+   };
+  };
+ };
+
+ ft5336_touch: ft5336@38 {
+  compatible = "focaltech,ft5336";
+  reg = <0x38>;
+  int-gpios = <&gpio1 7 (1 << 0)>;
+ };
+};
+
+&i2c1 {
+ status = "disabled";
+ clock-frequency = <100000>;
+ sda-gpios = <&gpio1 0 ((1 << 1) | (1 << 2))>;
+ scl-gpios = <&gpio1 1 ((1 << 1) | (1 << 2))>;
+ pinctrl-0 = <&i2c1_default>;
+ pinctrl-names = "default";
+};
+
+&spi3 {
+ #address-cells = <1>;
+ #size-cells = <0>;
+ status = "okay";
+ pinctrl-0 = <&spim3_default>;
+ pinctrl-names = "default";
+ dma-enabled;
+ clock-frequency = <20000000>;
+ cs-gpios = <&gpio0 5 (1 << 0)>,
+     <&gpio0 4 (1 << 0)>;
+
+ sd0: sd@1 {
+  compatible = "zephyr,sdhc-spi-slot";
+  reg = <1>;
+  status = "okay";
+  spi-max-frequency = <20000000>;
+
+  mmc {
+   compatible = "zephyr,sdmmc-disk";
+   disk-name = "SD";
+   status = "okay";
+  };
+ };
+};
+
+&timer0 {
+ status = "okay";
+};
+
+&timer1 {
+ status = "okay";
+};
+
+&timer2 {
+ status = "okay";
+};
+
+&timer3 {
+ status = "okay";
+};
+
+&trng0 {
+ status = "okay";
+};
+
+&esp32_bt_hci {
+ status = "okay";
+};
+
+&wifi {
+ status = "okay";
+};
+# 0 "<command-line>" 2
+# 1 "/home/oscar/csse4011/zephyr/misc/empty_file.c"
