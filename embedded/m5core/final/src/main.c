@@ -26,17 +26,17 @@
  * User configuration
  * ============================================================ */
 
-#define WIFI_SSID       "Iphone 67"
-#define WIFI_PSK        "sunasuna"
+#define WIFI_SSID       "csse4011"
+#define WIFI_PSK        "csse4011wifi"
 
 #define JETSON_IP       "192.168.1.54"
 #define JETSON_PORT     5000
 
-//#define ESP32CAM_IP   "192.168.1.80"
-//#define ESP32CAM_PORT 80
-
-#define ESP32CAM_IP   "172.20.10.10"
+#define ESP32CAM_IP   "192.168.1.80"
 #define ESP32CAM_PORT 80
+//hotspot testing
+//#define ESP32CAM_IP   "172.20.10.10"
+#//define ESP32CAM_PORT 80
 
 #define RESULT_PATH     "/latest_result.json"
 #define IMAGE_URL       "http://" JETSON_IP ":5000/latest_image.jpg"
