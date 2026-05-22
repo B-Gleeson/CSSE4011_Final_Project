@@ -105,6 +105,9 @@ static uint16_t nus_rx_handle;
 static uint16_t nus_tx_handle;
 static uint16_t nus_tx_ccc_handle;
 
+static uint8_t ccc_discover_retries;
+#define MAX_CCC_RETRIES 4
+
 static bool nus_ready;
 
 static struct bt_gatt_discover_params discover_params;
@@ -853,25 +856,42 @@ static int wifi_connect(void)
     dashboard_send_status("wifi_ready");
     return 0;
 }
-
 /* ============================================================
  * BLE NUS central
+ *
+ * Discovery order intentionally follows the previous working
+ * CSSE4011 NUS base pattern:
+ *
+ *   service -> TX char -> TX CCC -> subscribe -> RX char -> ready
+ *
+ * TX is peripheral-to-central notifications.
+ * RX is central-to-peripheral writes.
  * ============================================================ */
 
 enum discovery_state {
     DISCOVER_NUS_SERVICE,
-    DISCOVER_NUS_RX_CHAR,
     DISCOVER_NUS_TX_CHAR,
-    DISCOVER_NUS_TX_CCC,
+    DISCOVER_NUS_RX_CHAR,
 };
 
 static enum discovery_state discovery_state;
 
 static void start_scan(void);
+static void start_nus_discovery(struct bt_conn *conn);
 static void discover_nus_service(struct bt_conn *conn);
-static void discover_nus_rx_char(struct bt_conn *conn);
 static void discover_nus_tx_char(struct bt_conn *conn);
-static void discover_nus_tx_ccc(struct bt_conn *conn);
+static void discover_nus_rx_char(struct bt_conn *conn);
+static void nus_discovery_work_handler(struct k_work *work);
+
+K_WORK_DELAYABLE_DEFINE(nus_discovery_work, nus_discovery_work_handler);
+
+static void dashboard_send_status_with_err(const char *prefix, int err)
+{
+    char msg[128];
+
+    snprintf(msg, sizeof(msg), "%s_%d", prefix, err);
+    dashboard_send_status(msg);
+}
 
 static int alarm_nus_send(const char *cmd)
 {
@@ -880,11 +900,17 @@ static int alarm_nus_send(const char *cmd)
         return -ENOTCONN;
     }
 
-    return bt_gatt_write_without_response(alarm_conn,
-                                          nus_rx_handle,
-                                          cmd,
-                                          strlen(cmd),
-                                          false);
+    int err = bt_gatt_write_without_response(alarm_conn,
+                                             nus_rx_handle,
+                                             cmd,
+                                             strlen(cmd),
+                                             false);
+
+    if (err) {
+        dashboard_send_status_with_err("nus_write_failed", err);
+    }
+
+    return err;
 }
 
 static int alarm_send_state(bool enable)
@@ -915,8 +941,19 @@ static uint8_t nus_notify_func(struct bt_conn *conn,
 
     if (!data) {
         params->value_handle = 0;
+        params->ccc_handle = 0;
         nus_ready = false;
-        dashboard_send_status("nus_notify_stopped");
+
+        dashboard_send_status(alarm_conn ?
+                              "nus_notify_stopped_conn_alive" :
+                              "nus_notify_stopped_no_conn");
+
+        /* Force a clean reconnect path if the subscription collapses. */
+        if (alarm_conn) {
+            (void)bt_conn_disconnect(alarm_conn,
+                                     BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        }
+
         return BT_GATT_ITER_STOP;
     }
 
@@ -931,13 +968,30 @@ static uint8_t nus_notify_func(struct bt_conn *conn,
         msg[copy_len + 1] = '\0';
     }
 
-    /*
-     * nRF52840 should send JSON, e.g.:
-     * {"type":"uv_data","raw":1234,"mv":850,"uv_x100":245,"alarm":false}
-     */
     serial_send_str(msg);
 
     return BT_GATT_ITER_CONTINUE;
+}
+
+static void report_discovery_not_found(void)
+{
+    switch (discovery_state) {
+    case DISCOVER_NUS_SERVICE:
+        dashboard_send_status("nus_service_not_found");
+        break;
+
+    case DISCOVER_NUS_TX_CHAR:
+        dashboard_send_status("nus_tx_not_found");
+        break;
+
+    case DISCOVER_NUS_RX_CHAR:
+        dashboard_send_status("nus_rx_not_found");
+        break;
+
+    default:
+        dashboard_send_status("nus_discovery_failed");
+        break;
+    }
 }
 
 static uint8_t discover_func(struct bt_conn *conn,
@@ -948,67 +1002,72 @@ static uint8_t discover_func(struct bt_conn *conn,
 
     if (!attr) {
         memset(params, 0, sizeof(*params));
-        dashboard_send_status("nus_discovery_failed");
+
+        report_discovery_not_found();
+        if (alarm_conn) {
+            bt_conn_disconnect(alarm_conn,
+                               BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        }
+        
         return BT_GATT_ITER_STOP;
     }
 
-    switch (discovery_state) {
+  switch (discovery_state) {
     case DISCOVER_NUS_SERVICE: {
         const struct bt_gatt_service_val *service = attr->user_data;
-
-        nus_service_start_handle = attr->handle + 1;
+        nus_service_start_handle = attr->handle + 1U;
         nus_service_end_handle = service->end_handle;
-
-        discover_nus_rx_char(conn);
-        return BT_GATT_ITER_STOP;
-    }
-
-    case DISCOVER_NUS_RX_CHAR: {
-        const struct bt_gatt_chrc *chrc = attr->user_data;
-
-        nus_rx_handle = chrc->value_handle;
-
+        dashboard_send_status("nus_service_found");
         discover_nus_tx_char(conn);
         return BT_GATT_ITER_STOP;
     }
 
     case DISCOVER_NUS_TX_CHAR: {
-        const struct bt_gatt_chrc *chrc = attr->user_data;
+        nus_tx_handle = bt_gatt_attr_value_handle(attr);
+        nus_tx_ccc_handle = nus_tx_handle + 1U;
 
-        nus_tx_handle = chrc->value_handle;
-
-        discover_nus_tx_ccc(conn);
-        return BT_GATT_ITER_STOP;
-    }
-
-    case DISCOVER_NUS_TX_CCC:
-        nus_tx_ccc_handle = attr->handle;
+        char hmsg[64];
+        snprintf(hmsg, sizeof(hmsg), "nus_tx_h%u_ccc_h%u",
+                 nus_tx_handle, nus_tx_ccc_handle);
+        dashboard_send_status(hmsg);
 
         memset(&subscribe_params, 0, sizeof(subscribe_params));
-
-        subscribe_params.notify = nus_notify_func;
-        subscribe_params.value = BT_GATT_CCC_NOTIFY;
+        subscribe_params.notify       = nus_notify_func;
+        subscribe_params.value        = BT_GATT_CCC_NOTIFY;
         subscribe_params.value_handle = nus_tx_handle;
-        subscribe_params.ccc_handle = nus_tx_ccc_handle;
+        subscribe_params.ccc_handle   = nus_tx_ccc_handle;
 
-        err = bt_gatt_subscribe(conn, &subscribe_params);
-
+        err = bt_gatt_subscribe(alarm_conn, &subscribe_params);
         if (err && err != -EALREADY) {
-            dashboard_send_status("nus_subscribe_failed");
+            dashboard_send_status_with_err("nus_subscribe_failed", err);
+            if (alarm_conn) {
+                bt_conn_disconnect(alarm_conn,
+                                   BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+            }
             return BT_GATT_ITER_STOP;
         }
 
+        dashboard_send_status("nus_subscribed");
+        discover_nus_rx_char(alarm_conn);
+        return BT_GATT_ITER_STOP;
+    }
+
+    case DISCOVER_NUS_RX_CHAR:
+        nus_rx_handle = bt_gatt_attr_value_handle(attr);
         nus_ready = true;
         dashboard_send_status("nus_ready");
         return BT_GATT_ITER_STOP;
 
     default:
+        dashboard_send_status("nus_discovery_bad_state");
         return BT_GATT_ITER_STOP;
     }
 }
 
 static void discover_nus_service(struct bt_conn *conn)
 {
+    int err;
+
     discovery_state = DISCOVER_NUS_SERVICE;
 
     memset(&discover_params, 0, sizeof(discover_params));
@@ -1019,30 +1078,17 @@ static void discover_nus_service(struct bt_conn *conn)
     discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
     discover_params.type = BT_GATT_DISCOVER_PRIMARY;
 
-    if (bt_gatt_discover(conn, &discover_params)) {
-        dashboard_send_status("nus_service_discover_start_failed");
-    }
-}
+    err = bt_gatt_discover(conn, &discover_params);
 
-static void discover_nus_rx_char(struct bt_conn *conn)
-{
-    discovery_state = DISCOVER_NUS_RX_CHAR;
-
-    memset(&discover_params, 0, sizeof(discover_params));
-
-    discover_params.uuid = &nus_rx_uuid.uuid;
-    discover_params.func = discover_func;
-    discover_params.start_handle = nus_service_start_handle;
-    discover_params.end_handle = nus_service_end_handle;
-    discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
-
-    if (bt_gatt_discover(conn, &discover_params)) {
-        dashboard_send_status("nus_rx_discover_start_failed");
+    if (err) {
+        dashboard_send_status_with_err("nus_service_discover_start_failed", err);
     }
 }
 
 static void discover_nus_tx_char(struct bt_conn *conn)
 {
+    int err;
+
     discovery_state = DISCOVER_NUS_TX_CHAR;
 
     memset(&discover_params, 0, sizeof(discover_params));
@@ -1050,28 +1096,42 @@ static void discover_nus_tx_char(struct bt_conn *conn)
     discover_params.uuid = &nus_tx_uuid.uuid;
     discover_params.func = discover_func;
     discover_params.start_handle = nus_service_start_handle;
-    discover_params.end_handle = nus_service_end_handle;
+
+    /*
+     * Match the previous working base-node behaviour: use the full ATT range
+     * rather than relying on the service end handle being interpreted exactly
+     * as expected by this controller/host combination.
+     */
+    discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
     discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
 
-    if (bt_gatt_discover(conn, &discover_params)) {
-        dashboard_send_status("nus_tx_discover_start_failed");
+    err = bt_gatt_discover(conn, &discover_params);
+
+    if (err) {
+        dashboard_send_status_with_err("nus_tx_discover_start_failed", err);
     }
 }
 
-static void discover_nus_tx_ccc(struct bt_conn *conn)
+static void discover_nus_rx_char(struct bt_conn *conn)
 {
-    discovery_state = DISCOVER_NUS_TX_CCC;
+    int err;
+
+    discovery_state = DISCOVER_NUS_RX_CHAR;
 
     memset(&discover_params, 0, sizeof(discover_params));
 
-    discover_params.uuid = BT_UUID_GATT_CCC;
+    discover_params.uuid = &nus_rx_uuid.uuid;
     discover_params.func = discover_func;
-    discover_params.start_handle = nus_tx_handle + 1;
-    discover_params.end_handle = nus_service_end_handle;
-    discover_params.type = BT_GATT_DISCOVER_DESCRIPTOR;
 
-    if (bt_gatt_discover(conn, &discover_params)) {
-        dashboard_send_status("nus_ccc_discover_start_failed");
+    /* Continue after the CCC, as in the previous working project. */
+    discover_params.start_handle = nus_tx_ccc_handle + 1U;
+    discover_params.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+    discover_params.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+    err = bt_gatt_discover(conn, &discover_params);
+
+    if (err) {
+        dashboard_send_status_with_err("nus_rx_discover_start_failed", err);
     }
 }
 
@@ -1081,12 +1141,30 @@ static void start_nus_discovery(struct bt_conn *conn)
     nus_rx_handle = 0;
     nus_tx_handle = 0;
     nus_tx_ccc_handle = 0;
+    nus_service_start_handle = 0;
+    nus_service_end_handle = 0;
+    ccc_discover_retries = 0;
+
+    dashboard_send_status("nus_discovery_start");
 
     discover_nus_service(conn);
 }
 
+static void nus_discovery_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+
+    if (!alarm_conn) {
+        dashboard_send_status("nus_discovery_no_conn");
+        return;
+    }
+
+    start_nus_discovery(alarm_conn);
+}
+
 struct scan_name_ctx {
     bool match;
+    char name[40];
 };
 
 static bool adv_data_cb(struct bt_data *data, void *user_data)
@@ -1096,13 +1174,12 @@ static bool adv_data_cb(struct bt_data *data, void *user_data)
     if (data->type == BT_DATA_NAME_COMPLETE ||
         data->type == BT_DATA_NAME_SHORTENED) {
 
-        char name[40];
-        size_t len = MIN(data->data_len, sizeof(name) - 1);
+        size_t len = MIN(data->data_len, sizeof(ctx->name) - 1);
 
-        memcpy(name, data->data, len);
-        name[len] = '\0';
+        memcpy(ctx->name, data->data, len);
+        ctx->name[len] = '\0';
 
-        if (strcmp(name, ALARM_NODE_NAME) == 0) {
+        if (strcmp(ctx->name, ALARM_NODE_NAME) == 0) {
             ctx->match = true;
             return false;
         }
@@ -1122,8 +1199,6 @@ static void device_found(const bt_addr_le_t *addr,
                          uint8_t type,
                          struct net_buf_simple *ad)
 {
-    ARG_UNUSED(rssi);
-
     if (!adv_is_connectable(type)) {
         return;
     }
@@ -1134,24 +1209,43 @@ static void device_found(const bt_addr_le_t *addr,
 
     struct scan_name_ctx ctx = {
         .match = false,
+        .name = {0},
     };
 
     bt_data_parse(ad, adv_data_cb, &ctx);
+
+    if (ctx.name[0] != '\0') {
+        char msg[128];
+
+        snprintf(msg, sizeof(msg),
+                 "ble_seen_%s_rssi_%d_match_%d",
+                 ctx.name,
+                 (int)rssi,
+                 ctx.match ? 1 : 0);
+
+        dashboard_send_status(msg);
+    }
 
     if (!ctx.match) {
         return;
     }
 
-    (void)bt_le_scan_stop();
+    dashboard_send_status("ble_target_found");
 
-    int err = bt_conn_le_create(addr,
-                                BT_CONN_LE_CREATE_CONN,
-                                BT_LE_CONN_PARAM_DEFAULT,
-                                &alarm_conn);
+    int err = bt_le_scan_stop();
+
+    if (err && err != -EALREADY) {
+        dashboard_send_status_with_err("ble_scan_stop_failed", err);
+    }
+
+    err = bt_conn_le_create(addr,
+                            BT_CONN_LE_CREATE_CONN,
+                            BT_LE_CONN_PARAM_DEFAULT,
+                            &alarm_conn);
 
     if (err) {
         alarm_conn = NULL;
-        dashboard_send_status("ble_connect_failed");
+        dashboard_send_status_with_err("ble_connect_failed", err);
         start_scan();
     }
 }
@@ -1167,8 +1261,8 @@ static void start_scan(void)
 
     int err = bt_le_scan_start(&scan_param, device_found);
 
-    if (err) {
-        dashboard_send_status("ble_scan_failed");
+    if (err && err != -EALREADY) {
+        dashboard_send_status_with_err("ble_scan_failed", err);
     } else {
         dashboard_send_status("ble_scanning");
     }
@@ -1182,7 +1276,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
             alarm_conn = NULL;
         }
 
-        dashboard_send_status("ble_connection_failed");
+        dashboard_send_status_with_err("ble_connection_failed", err);
         start_scan();
         return;
     }
@@ -1192,23 +1286,29 @@ static void connected(struct bt_conn *conn, uint8_t err)
     }
 
     dashboard_send_status("ble_connected");
-    start_nus_discovery(conn);
+
+    /* Do not block the Bluetooth callback. Start GATT discovery via work. */
+    k_work_schedule(&nus_discovery_work, K_MSEC(1500));
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
     ARG_UNUSED(conn);
-    ARG_UNUSED(reason);
 
     nus_ready = false;
     alarm_state = false;
+    nus_rx_handle = 0;
+    nus_tx_handle = 0;
+    nus_tx_ccc_handle = 0;
+
+    k_work_cancel_delayable(&nus_discovery_work);
 
     if (alarm_conn) {
         bt_conn_unref(alarm_conn);
         alarm_conn = NULL;
     }
 
-    dashboard_send_status("ble_disconnected");
+    dashboard_send_status_with_err("ble_disconnected_reason", reason);
     start_scan();
 }
 
@@ -1222,7 +1322,7 @@ static int ble_init(void)
     int err = bt_enable(NULL);
 
     if (err) {
-        dashboard_send_status("bt_enable_failed");
+        dashboard_send_status_with_err("bt_enable_failed", err);
         return err;
     }
 
@@ -1231,7 +1331,6 @@ static int ble_init(void)
 
     return 0;
 }
-
 /* ============================================================
  * Dashboard command handling
  * ============================================================ */
@@ -1453,7 +1552,7 @@ int main(void)
                     0,
                     K_NO_WAIT);
 
-    //(void)ble_init();
+    (void)ble_init();
 
     k_thread_create(&serial_rx_thread_data,
                     serial_rx_stack,
@@ -1477,7 +1576,7 @@ int main(void)
                     0,
                     K_NO_WAIT);
 
-    /*k_thread_create(&uv_poll_thread_data,
+    k_thread_create(&uv_poll_thread_data,
                     uv_poll_stack,
                     K_THREAD_STACK_SIZEOF(uv_poll_stack),
                     uv_poll_thread,
@@ -1487,7 +1586,7 @@ int main(void)
                     10,
                     0,
                     K_NO_WAIT);
-*/
+
     k_thread_create(&heartbeat_thread_data,
                     heartbeat_stack,
                     K_THREAD_STACK_SIZEOF(heartbeat_stack),
