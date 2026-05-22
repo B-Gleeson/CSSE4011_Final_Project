@@ -1,14 +1,12 @@
 // main.cpp
 
 #include "detector.hpp"
-#include "sender.hpp"
-#include "receiver.hpp"
-#include "telemetry.hpp"
 
 #include <iostream>
 #include <algorithm>
 #include <thread>
 #include <chrono>
+#include <set>
 
 #include <opencv2/opencv.hpp>
 
@@ -47,10 +45,10 @@ int main(int argc, char** argv)
     // ========================================================
 
     std::string incomingDir =
-        "receiver/images/incoming";
+        "images/incoming";
 
     std::string outputDir =
-        "receiver/images/output";
+        "images/output";
 
     // ========================================================
     // Create directories
@@ -65,6 +63,13 @@ int main(int argc, char** argv)
     // ========================================================
 
     YOLODetector detector(enginePath);
+
+    // ========================================================
+    // Track processed files
+    // ========================================================
+
+    std::set<std::string>
+        processedFiles;
 
     // ========================================================
     // Frame counter
@@ -83,284 +88,242 @@ int main(int argc, char** argv)
     while (true)
     {
         // ====================================================
-        // Receive image from ESP32
+        // Iterate incoming folder
         // ====================================================
 
-        std::string receivedImagePath =
-            incomingDir + "/latest.jpg";
-
-        bool received =
-            receiveImage(receivedImagePath);
-
-        if (!received)
-        {
-            std::cout
-                << "Failed to receive image."
-                << std::endl;
-
-            continue;
-        }
-
-        // ====================================================
-        // Small delay
-        // ====================================================
-
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(100)
-        );
-
-        // ====================================================
-        // Load image
-        // ====================================================
-
-        cv::Mat image =
-            cv::imread(receivedImagePath);
-
-        if (image.empty())
-        {
-            std::cout
-                << "Failed to load image."
-                << std::endl;
-
-            continue;
-        }
-
-        // ====================================================
-        // Run inference
-        // ====================================================
-
-        std::vector<Detection>
-            detections =
-                detector.infer(image);
-
-        // ====================================================
-        // PPE analysis
-        // ====================================================
-
-        bool helmetFound = false;
-
-        float bestConfidence = 0.0f;
-
-        std::vector<std::string>
-            missingItems;
-
-        for (const auto& det : detections)
-        {
-            if (det.class_id == 1)
-            {
-                helmetFound = true;
-
-                if (det.confidence >
-                    bestConfidence)
-                {
-                    bestConfidence =
-                        det.confidence;
-                }
-            }
-        }
-
-        if (!helmetFound)
-        {
-            missingItems.push_back(
-                "hardhat"
-            );
-        }
-
-        // ====================================================
-        // Draw detections
-        // ====================================================
-
-        for (const auto& det : detections)
+        for (const auto& entry :
+             fs::directory_iterator(
+                 incomingDir))
         {
             // =================================================
-            // Clamp box
+            // Path
             // =================================================
 
-            int x =
-                std::max(0, det.box.x);
+            std::string imagePath =
+                entry.path().string();
 
-            int y =
-                std::max(0, det.box.y);
+            // =================================================
+            // Only jpg
+            // =================================================
 
-            int width =
-                std::min(
-                    det.box.width,
-                    image.cols - x
-                );
-
-            int height =
-                std::min(
-                    det.box.height,
-                    image.rows - y
-                );
-
-            if (width <= 0 ||
-                height <= 0)
+            if (entry.path().extension()
+                != ".jpg")
             {
                 continue;
             }
 
-            cv::Rect safeBox(
-                x,
-                y,
-                width,
-                height
-            );
-
             // =================================================
-            // Draw rectangle
+            // Skip already processed
             // =================================================
 
-            cv::rectangle(
-                image,
-                safeBox,
-                cv::Scalar(0, 255, 0),
-                2
-            );
-
-            // =================================================
-            // Class names
-            // =================================================
-
-            std::string className;
-
-            if (det.class_id == 0)
+            if (processedFiles.count(
+                    imagePath))
             {
-                className = "head";
+                continue;
             }
-            else if (det.class_id == 1)
+
+            std::cout
+                << "Processing: "
+                << imagePath
+                << std::endl;
+
+            // =================================================
+            // Load image
+            // =================================================
+
+            cv::Mat image =
+                cv::imread(imagePath);
+
+            if (image.empty())
             {
-                className = "helmet";
-            }
-            else if (det.class_id == 2)
-            {
-                className = "person";
-            }
-            else
-            {
-                className = "unknown";
+                std::cout
+                    << "Failed to load image."
+                    << std::endl;
+
+                continue;
             }
 
             // =================================================
-            // Label
+            // Run inference
             // =================================================
 
-            std::string label =
-                className +
-                " " +
-                cv::format(
-                    "%.2f",
-                    det.confidence
+            std::vector<Detection>
+                detections =
+                    detector.infer(image);
+
+            // =================================================
+            // Draw detections
+            // =================================================
+
+            for (const auto& det :
+                 detections)
+            {
+                // =============================================
+                // Clamp box
+                // =============================================
+
+                int x =
+                    std::max(
+                        0,
+                        det.box.x
+                    );
+
+                int y =
+                    std::max(
+                        0,
+                        det.box.y
+                    );
+
+                int width =
+                    std::min(
+                        det.box.width,
+                        image.cols - x
+                    );
+
+                int height =
+                    std::min(
+                        det.box.height,
+                        image.rows - y
+                    );
+
+                if (width <= 0 ||
+                    height <= 0)
+                {
+                    continue;
+                }
+
+                cv::Rect safeBox(
+                    x,
+                    y,
+                    width,
+                    height
                 );
 
+                // =============================================
+                // Draw rectangle
+                // =============================================
+
+                cv::rectangle(
+                    image,
+                    safeBox,
+                    cv::Scalar(
+                        0,
+                        255,
+                        0
+                    ),
+                    2
+                );
+
+                // =============================================
+                // Class names
+                // =============================================
+
+                std::string className;
+
+                if (det.class_id == 0)
+                {
+                    className = "head";
+                }
+                else if (det.class_id == 1)
+                {
+                    className = "helmet";
+                }
+                else if (det.class_id == 2)
+                {
+                    className = "person";
+                }
+                else
+                {
+                    className = "unknown";
+                }
+
+                // =============================================
+                // Label
+                // =============================================
+
+                std::string label =
+                    className +
+                    " " +
+                    cv::format(
+                        "%.2f",
+                        det.confidence
+                    );
+
+                // =============================================
+                // Draw label
+                // =============================================
+
+                cv::putText(
+                    image,
+                    label,
+                    cv::Point(
+                        x,
+                        std::max(
+                            0,
+                            y - 10
+                        )
+                    ),
+                    cv::FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    cv::Scalar(
+                        0,
+                        255,
+                        0
+                    ),
+                    2
+                );
+            }
+
             // =================================================
-            // Draw label
+            // Output filename
             // =================================================
 
-            cv::putText(
-                image,
-                label,
-                cv::Point(
-                    x,
-                    std::max(0, y - 10)
-                ),
-                cv::FONT_HERSHEY_SIMPLEX,
-                0.5,
-                cv::Scalar(0, 255, 0),
-                2
-            );
-        }
+            std::string filename =
+                entry.path().filename()
+                .string();
 
-        // ====================================================
-        // Save processed image
-        // ====================================================
+            std::string outputPath =
+                outputDir +
+                "/processed_" +
+                filename;
 
-        std::string outputPath =
-            outputDir +
-            "/processed_" +
-            std::to_string(frameID) +
-            ".jpg";
+            // =================================================
+            // Save output image
+            // =================================================
 
-        bool saved =
-            cv::imwrite(
-                outputPath,
-                image
-            );
+            bool saved =
+                cv::imwrite(
+                    outputPath,
+                    image
+                );
 
-        if (saved)
-        {
-            std::cout
-                << "Saved: "
-                << outputPath
-                << std::endl;
-        }
+            if (saved)
+            {
+                std::cout
+                    << "Saved: "
+                    << outputPath
+                    << std::endl;
+            }
 
-        // ====================================================
-        // Send processed image
-        // ====================================================
+            // =================================================
+            // Mark processed
+            // =================================================
 
-        bool imageSent =
-            sendImageToBaseNode(image);
-
-        if (!imageSent)
-        {
-            std::cout
-                << "Failed to send image."
-                << std::endl;
-        }
-
-        // ====================================================
-        // Send telemetry JSON
-        // ====================================================
-
-        bool telemetrySent =
-            sendTelemetry(
-                frameID,
-                "camera_01",
-                helmetFound,
-                missingItems,
-                bestConfidence,
-                helmetFound ?
-                    "safe" :
-                    "alert"
+            processedFiles.insert(
+                imagePath
             );
 
-        if (!telemetrySent)
-        {
-            std::cout
-                << "Failed to send telemetry."
-                << std::endl;
+            frameID++;
         }
-
-        // ====================================================
-        // Delete received image
-        // ====================================================
-
-        try
-        {
-            fs::remove(
-                receivedImagePath
-            );
-        }
-        catch (...)
-        {
-            std::cout
-                << "Failed to delete image."
-                << std::endl;
-        }
-
-        // ====================================================
-        // Increment frame ID
-        // ====================================================
-
-        frameID++;
 
         // ====================================================
         // Small delay
         // ====================================================
 
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(100)
+            std::chrono::milliseconds(
+                100
+            )
         );
     }
 
