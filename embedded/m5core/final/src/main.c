@@ -32,6 +32,12 @@
 #define JETSON_IP       "192.168.1.54"
 #define JETSON_PORT     5000
 
+//#define ESP32CAM_IP   "192.168.1.80"
+//#define ESP32CAM_PORT 80
+
+#define ESP32CAM_IP   "172.20.10.10"
+#define ESP32CAM_PORT 80
+
 #define RESULT_PATH     "/latest_result.json"
 #define IMAGE_URL       "http://" JETSON_IP ":5000/latest_image.jpg"
 
@@ -77,6 +83,9 @@ static struct bt_uuid_128 nus_tx_uuid =
 
 static const struct device *dashboard_uart;
 
+K_MSGQ_DEFINE(dashboard_uart_msgq, sizeof(uint8_t), 256, 4);
+
+
 static K_SEM_DEFINE(wifi_connected_sem, 0, 1);
 static K_SEM_DEFINE(ipv4_addr_sem, 0, 1);
 
@@ -88,12 +97,14 @@ static bool wifi_associated;
 
 static K_MUTEX_DEFINE(serial_mutex);
 static K_MUTEX_DEFINE(http_mutex);
+static K_MUTEX_DEFINE(cam_mutex);
 
 static bool wifi_ready;
 static bool alarm_state;
 static int32_t last_forwarded_frame_id = -1;
 
 static uint8_t http_rx_buf[MAX_HTTP_RX_BYTES];
+static uint8_t cam_rx_buf[512];  
 static char http_body[MAX_HTTP_BODY_BYTES];
 
 /* BLE state */
@@ -117,7 +128,7 @@ static struct bt_gatt_subscribe_params subscribe_params;
 K_THREAD_STACK_DEFINE(wifi_stack, 4096);
 static struct k_thread wifi_thread_data;
 
-K_THREAD_STACK_DEFINE(serial_rx_stack, 2048);
+K_THREAD_STACK_DEFINE(serial_rx_stack, 6144);
 static struct k_thread serial_rx_thread_data;
 
 K_THREAD_STACK_DEFINE(jetson_poll_stack, 4096);
@@ -145,6 +156,29 @@ struct ppe_result {
 /* ============================================================
  * Serial dashboard helpers
  * ============================================================ */
+static void dashboard_uart_rx_cb(const struct device *dev, void *user_data)
+{
+    ARG_UNUSED(user_data);
+
+    uint8_t ch;
+
+    if (!uart_irq_update(dev)) {
+        return;
+    }
+
+    if (!uart_irq_rx_ready(dev)) {
+        return;
+    }
+
+    /*
+     * Drain the FIFO immediately.
+     * The command-processing thread will parse the bytes later.
+     */
+    while (uart_fifo_read(dev, &ch, 1) == 1) {
+        (void)k_msgq_put(&dashboard_uart_msgq, &ch, K_NO_WAIT);
+    }
+}
+
 
 static void serial_send_bytes_unlocked(const uint8_t *data, size_t len)
 {
@@ -222,7 +256,21 @@ static int dashboard_uart_init(void)
         .flow_ctrl = UART_CFG_FLOW_CTRL_NONE,
     };
 
-    (void)uart_configure(dashboard_uart, &cfg);
+    int err = uart_configure(dashboard_uart, &cfg);
+
+    if (err) {
+        return err;
+    }
+
+    err = uart_irq_callback_user_data_set(dashboard_uart,
+                                          dashboard_uart_rx_cb,
+                                          NULL);
+
+    if (err) {
+        return err;
+    }
+
+    uart_irq_rx_enable(dashboard_uart);
 
     return 0;
 }
@@ -234,10 +282,35 @@ static int dashboard_uart_init(void)
 static const char *find_json_key(const char *json, const char *key)
 {
     char pattern[64];
+    const char *match;
+    size_t pattern_len;
 
     snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    pattern_len = strlen(pattern);
 
-    return strstr(json, pattern);
+    match = json;
+
+    while ((match = strstr(match, pattern)) != NULL) {
+        const char *after = match + pattern_len;
+
+        /*
+         * A JSON key must be followed by optional whitespace and ':'.
+         * This prevents matching values such as:
+         *     "type": "command"
+         * when searching for the key "command".
+         */
+        while (*after == ' ' || *after == '\t') {
+            after++;
+        }
+
+        if (*after == ':') {
+            return match;
+        }
+
+        match += pattern_len;
+    }
+
+    return NULL;
 }
 
 static int extract_string_field(const char *json,
@@ -547,6 +620,10 @@ static int http_open_socket(void)
         return -errno;
     }
 
+    struct timeval tv = { .tv_sec = 3, .tv_usec = 0 };
+    zsock_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO,
+                     &tv, sizeof(tv));
+
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
 
@@ -658,6 +735,55 @@ out:
     }
 
     k_mutex_unlock(&http_mutex);
+    return ret;
+}
+
+static int http_post_to_cam(const char *path, const char *json_body)
+{
+    int ret  = 0;
+    int sock = -1;
+
+    k_mutex_lock(&cam_mutex, K_FOREVER);
+
+    sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock < 0) { ret = -errno; goto out; }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port   = htons(ESP32CAM_PORT);
+
+    if (zsock_inet_pton(AF_INET, ESP32CAM_IP, &addr.sin_addr) != 1) {
+        ret = -EINVAL; goto out;
+    }
+
+    if (zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        ret = -errno; goto out;
+    }
+
+    char request[512];
+    size_t body_len = strlen(json_body);
+
+    snprintf(request, sizeof(request),
+             "POST %s HTTP/1.1\r\n"
+             "Host: %s:%d\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %u\r\n"
+             "Connection: close\r\n"
+             "\r\n"
+             "%s",
+             path, ESP32CAM_IP, ESP32CAM_PORT,
+             (unsigned)body_len, json_body);
+
+    if (zsock_send(sock, request, strlen(request), 0) < 0) {
+        ret = -errno; goto out;
+    }
+
+    (void)zsock_recv(sock, cam_rx_buf, sizeof(cam_rx_buf), 0);
+
+out:
+    if (sock >= 0) zsock_close(sock);
+    k_mutex_unlock(&cam_mutex);
     return ret;
 }
 
@@ -1351,13 +1477,13 @@ static void handle_dashboard_command(const char *line)
     }
 
     if (strcmp(target, "camera") == 0 && strcmp(command, "take_photo") == 0) {
+            dashboard_send_status("camera_command_parsed");
         if (!wifi_ready) {
             dashboard_send_alert("Camera command failed: Wi-Fi not ready");
             return;
         }
-
-        int err = http_post_json(CAMERA_COMMAND_PATH,
-                                 "{\"command\":\"take_photo\"}");
+     
+        int err = http_post_to_cam("/capture", "{}");
 
         dashboard_send_alert(err == 0 ?
                              "Camera command sent" :
@@ -1407,25 +1533,41 @@ static void serial_rx_thread(void *a, void *b, void *c)
 
     char line[MAX_SERIAL_LINE_BYTES];
     size_t idx = 0;
+    uint8_t ch;
 
     while (true) {
-        unsigned char ch;
+        /*
+         * Wait until the UART ISR has captured a received byte.
+         */
+        if (k_msgq_get(&dashboard_uart_msgq, &ch, K_FOREVER) != 0) {
+            continue;
+        }
 
-        if (uart_poll_in(dashboard_uart, &ch) == 0) {
-            if (ch == '\n' || ch == '\r') {
-                if (idx > 0) {
-                    line[idx] = '\0';
-                    handle_dashboard_command(line);
-                    idx = 0;
-                }
-            } else if (idx < sizeof(line) - 1) {
-                line[idx++] = (char)ch;
-            } else {
+        if (ch == '\r') {
+            continue;
+        }
+
+        if (ch == '\n') {
+            if (idx > 0) {
+                line[idx] = '\0';
+
+                /*
+                 * Proof that the M5 received one complete UART command line.
+                 */
+                dashboard_send_status("uart_line_received");
+
+                handle_dashboard_command(line);
                 idx = 0;
-                dashboard_send_status("serial_command_too_long");
             }
+
+            continue;
+        }
+
+        if (idx < sizeof(line) - 1) {
+            line[idx++] = (char)ch;
         } else {
-            k_sleep(K_MSEC(20));
+            idx = 0;
+            dashboard_send_status("serial_command_too_long");
         }
     }
 }

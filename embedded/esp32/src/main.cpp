@@ -2,17 +2,28 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 
 // =======================
 // Wi-Fi details
 // =======================
-const char* WIFI_SSID = "csse4011";
-const char* WIFI_PASSWORD = "csse4011wifi";
+const char* WIFI_SSID     = "Iphone 67";
+const char* WIFI_PASSWORD = "sunasuna";
 
-// Jetson receiver URL
-const char* SERVER_URL = "http://192.168.1.54:5000/upload";
+// Jetson receiver URL — camera still POSTs frames here
+const char* JETSON_UPLOAD_URL = "http://192.168.1.54:5000/upload";
 
-// Take one photo every 30 seconds
+// Static IP for the ESP32-CAM so the M5 Core can always reach it.
+
+//IPAddress LOCAL_IP(192, 168, 1, 80);
+//IPAddress GATEWAY(192, 168, 1, 1);
+//IPAddress SUBNET(255, 255, 255, 0);
+
+IPAddress LOCAL_IP(172, 20, 10, 10);      // ESP32-CAM
+IPAddress GATEWAY(172, 20, 10, 1);        // iPhone hotspot
+IPAddress SUBNET(255, 255, 255, 240);     // /28 mask
+
+// Periodic auto-capture (set to 0 to disable)
 const unsigned long PHOTO_INTERVAL_MS = 30000;
 unsigned long lastPhotoTime = 0;
 
@@ -38,16 +49,27 @@ unsigned long lastPhotoTime = 0;
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+// =======================
+// Web server
+// =======================
+WebServer server(80);
+
+// Forward declarations
 void connectToWiFi();
 bool initCamera();
-void captureAndSendPhoto();
+bool captureAndSendPhoto();
+void handleCapture();
+void handleStatus();
 
+// =======================
+// Setup
+// =======================
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
   Serial.println();
-  Serial.println("ESP32-CAM HTTP photo sender starting...");
+  Serial.println("ESP32-CAM starting...");
 
   connectToWiFi();
 
@@ -57,25 +79,85 @@ void setup() {
     ESP.restart();
   }
 
-  Serial.println("Setup complete.");
+  // Register HTTP routes
+  server.on("/capture", HTTP_POST, handleCapture);
+  server.on("/status",  HTTP_GET,  handleStatus);
+
+  server.begin();
+  Serial.println("HTTP server started on port 80.");
+  Serial.print("ESP32-CAM IP: ");
+  Serial.println(WiFi.localIP());
 }
 
+// =======================
+// Loop
+// =======================
 void loop() {
+  server.handleClient();
+
   unsigned long now = millis();
 
-  if (now - lastPhotoTime >= PHOTO_INTERVAL_MS || lastPhotoTime == 0) {
+  if (PHOTO_INTERVAL_MS > 0 &&
+      (lastPhotoTime == 0 || now - lastPhotoTime >= PHOTO_INTERVAL_MS)) {
     lastPhotoTime = now;
     captureAndSendPhoto();
   }
 
-  delay(100);
+  delay(10);
 }
 
+// =======================
+// HTTP handlers
+// =======================
+
+/*
+ * POST /capture
+ *
+ * Called by the M5 Core base node when the dashboard sends a
+ * "take_photo" command.  Captures a frame, POSTs it to the Jetson,
+ * and returns a JSON result to the caller.
+ */
+void handleCapture() {
+  Serial.println("[/capture] Triggered by remote command.");
+
+  bool ok = captureAndSendPhoto();
+
+  if (ok) {
+    server.send(200, "application/json",
+                "{\"status\":\"ok\",\"message\":\"photo sent to Jetson\"}");
+  } else {
+    server.send(500, "application/json",
+                "{\"status\":\"error\",\"message\":\"capture or upload failed\"}");
+  }
+}
+
+/*
+ * GET /status
+ *
+ * Simple health-check so the M5 Core (or the dashboard) can confirm
+ * the camera is alive and connected.
+ */
+void handleStatus() {
+  String json = "{\"status\":\"ok\","
+                "\"ip\":\"" + WiFi.localIP().toString() + "\","
+                "\"rssi\":" + String(WiFi.RSSI()) + "}";
+  server.send(200, "application/json", json);
+}
+
+// =======================
+// Wi-Fi
+// =======================
 void connectToWiFi() {
   Serial.print("Connecting to Wi-Fi: ");
   Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
+
+  // Request static IP so the M5 Core always knows where to find us
+  if (!WiFi.config(LOCAL_IP, GATEWAY, SUBNET)) {
+    Serial.println("Static IP config failed — falling back to DHCP.");
+  }
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
@@ -94,15 +176,18 @@ void connectToWiFi() {
 
   Serial.println();
   Serial.println("Wi-Fi connected.");
-  Serial.print("ESP32 IP address: ");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
+// =======================
+// Camera init
+// =======================
 bool initCamera() {
   camera_config_t config;
 
   config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
+  config.ledc_timer   = LEDC_TIMER_0;
 
   config.pin_d0 = Y2_GPIO_NUM;
   config.pin_d1 = Y3_GPIO_NUM;
@@ -113,34 +198,30 @@ bool initCamera() {
   config.pin_d6 = Y8_GPIO_NUM;
   config.pin_d7 = Y9_GPIO_NUM;
 
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-
+  config.pin_xclk    = XCLK_GPIO_NUM;
+  config.pin_pclk    = PCLK_GPIO_NUM;
+  config.pin_vsync   = VSYNC_GPIO_NUM;
+  config.pin_href    = HREF_GPIO_NUM;
   config.pin_sccb_sda = SIOD_GPIO_NUM;
   config.pin_sccb_scl = SIOC_GPIO_NUM;
-
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
+  config.pin_pwdn    = PWDN_GPIO_NUM;
+  config.pin_reset   = RESET_GPIO_NUM;
 
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
 
-  // For reliability, start moderate.
-  // You can later try FRAMESIZE_SVGA, FRAMESIZE_XGA, etc.
   if (psramFound()) {
     Serial.println("PSRAM found.");
-    config.frame_size = FRAMESIZE_SVGA;   // 800x600
-    config.jpeg_quality = 12;             // lower number = better quality/larger file
-    config.fb_count = 2;
-    config.grab_mode = CAMERA_GRAB_LATEST;
+    config.frame_size   = FRAMESIZE_SVGA;
+    config.jpeg_quality = 12;
+    config.fb_count     = 2;
+    config.grab_mode    = CAMERA_GRAB_LATEST;
   } else {
-    Serial.println("No PSRAM found. Using smaller frame size.");
-    config.frame_size = FRAMESIZE_VGA;    // 640x480
+    Serial.println("No PSRAM. Using smaller frame size.");
+    config.frame_size   = FRAMESIZE_VGA;
     config.jpeg_quality = 15;
-    config.fb_count = 1;
-    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+    config.fb_count     = 1;
+    config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
   }
 
   config.fb_location = CAMERA_FB_IN_PSRAM;
@@ -148,7 +229,7 @@ bool initCamera() {
   esp_err_t err = esp_camera_init(&config);
 
   if (err != ESP_OK) {
-    Serial.printf("esp_camera_init failed with error 0x%x\n", err);
+    Serial.printf("esp_camera_init failed: 0x%x\n", err);
     return false;
   }
 
@@ -156,9 +237,12 @@ bool initCamera() {
   return true;
 }
 
-void captureAndSendPhoto() {
+// =======================
+// Capture + upload
+// =======================
+bool captureAndSendPhoto() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Wi-Fi disconnected. Reconnecting...");
+    Serial.println("Wi-Fi lost. Reconnecting...");
     connectToWiFi();
   }
 
@@ -168,36 +252,29 @@ void captureAndSendPhoto() {
 
   if (!fb) {
     Serial.println("Camera capture failed.");
-    return;
+    return false;
   }
 
-  Serial.printf("Captured image: %u bytes\n", fb->len);
+  Serial.printf("Captured: %u bytes\n", fb->len);
 
   HTTPClient http;
-
-  Serial.print("Posting to: ");
-  Serial.println(SERVER_URL);
-
-  http.begin(SERVER_URL);
+  http.begin(JETSON_UPLOAD_URL);
   http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-ID", "esp32cam-01");
+  http.addHeader("X-Device-ID",  "esp32cam-01");
 
-  int httpResponseCode = http.POST(fb->buf, fb->len);
+  int code = http.POST(fb->buf, fb->len);
 
-  if (httpResponseCode > 0) {
-    Serial.printf("HTTP response code: %d\n", httpResponseCode);
-    String response = http.getString();
-    Serial.println("Server response:");
-    Serial.println(response);
+  bool success = (code > 0 && code < 400);
+
+  if (success) {
+    Serial.printf("Jetson responded: %d\n", code);
   } else {
-    Serial.printf("HTTP POST failed. Error: %s\n",
-                  http.errorToString(httpResponseCode).c_str());
+    Serial.printf("Upload failed: %s\n",
+                  http.errorToString(code).c_str());
   }
 
   http.end();
-
-  // Important: return frame buffer after use
   esp_camera_fb_return(fb);
 
-  Serial.println("Photo cycle complete.");
+  return success;
 }

@@ -9,6 +9,8 @@
             "name": "PlatformIO",
             "includePath": [
                 "/mnt/c/users/oscar/onedrive/documents/code projects/4011_final/CSSE4011_Final_Project/embedded/esp32/src",
+                "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
+                "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
@@ -218,7 +220,6 @@
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/FFat/src",
-                "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/HTTPUpdate/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/HTTPUpdateServer/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/I2S/src",
@@ -235,7 +236,6 @@
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/USB/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
-                "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
                 "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 ""
@@ -244,6 +244,8 @@
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
                     "/mnt/c/users/oscar/onedrive/documents/code projects/4011_final/CSSE4011_Final_Project/embedded/esp32/src",
+                    "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
+                    "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
@@ -453,7 +455,6 @@
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/FFat/src",
-                    "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/FS/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/HTTPUpdate/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/HTTPUpdateServer/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/I2S/src",
@@ -470,7 +471,6 @@
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/USB/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Update/src",
-                    "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
                     "/home/oscar/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     ""
