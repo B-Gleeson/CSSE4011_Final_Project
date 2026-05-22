@@ -1,12 +1,10 @@
-// main.cpp
-
 #include "detector.hpp"
 
 #include <iostream>
-#include <algorithm>
+#include <vector>
+
 #include <thread>
 #include <chrono>
-#include <set>
 
 #include <opencv2/opencv.hpp>
 
@@ -14,16 +12,8 @@
 
 namespace fs = std::experimental::filesystem;
 
-// ============================================================
-// Main
-// ============================================================
-
 int main(int argc, char** argv)
 {
-    // ========================================================
-    // Check arguments
-    // ========================================================
-
     if (argc < 2)
     {
         std::cout
@@ -33,29 +23,16 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    // ========================================================
-    // Engine path
-    // ========================================================
-
     std::string enginePath =
         argv[1];
 
-    // ========================================================
-    // Directories
-    // ========================================================
-
-    std::string incomingDir =
+    fs::path incomingDir =
         "images/incoming";
 
-    std::string outputDir =
+    fs::path outputDir =
         "images/output";
 
-    // ========================================================
-    // Create directories
-    // ========================================================
-
     fs::create_directories(incomingDir);
-
     fs::create_directories(outputDir);
 
     // ========================================================
@@ -65,63 +42,55 @@ int main(int argc, char** argv)
     YOLODetector detector(enginePath);
 
     // ========================================================
-    // Track processed files
-    // ========================================================
-
-    std::set<std::string>
-        processedFiles;
-
-    // ========================================================
-    // Frame counter
-    // ========================================================
-
-    int frameID = 0;
-
-    std::cout
-        << "PPE inference system running."
-        << std::endl;
-
-    // ========================================================
-    // Main loop
+    // Continuous processing loop
     // ========================================================
 
     while (true)
     {
+        std::vector<fs::path> files;
+
         // ====================================================
-        // Iterate incoming folder
+        // Find all images
         // ====================================================
 
-        for (const auto& entry :
-             fs::directory_iterator(
-                 incomingDir))
+        for (
+            auto& entry :
+            fs::recursive_directory_iterator(incomingDir)
+        )
         {
-            // =================================================
-            // Path
-            // =================================================
-
-            std::string imagePath =
-                entry.path().string();
-
-            // =================================================
-            // Only jpg
-            // =================================================
-
-            if (entry.path().extension()
-                != ".jpg")
+            if (!fs::is_regular_file(entry.path()))
             {
                 continue;
             }
 
-            // =================================================
-            // Skip already processed
-            // =================================================
+            std::string ext =
+                entry.path().extension().string();
 
-            if (processedFiles.count(
-                    imagePath))
+            std::transform(
+                ext.begin(),
+                ext.end(),
+                ext.begin(),
+                ::tolower
+            );
+
+            if (
+                ext == ".jpg"  ||
+                ext == ".jpeg" ||
+                ext == ".png"  ||
+                ext == ".bmp"  ||
+                ext == ".jfif"
+            )
             {
-                continue;
+                files.push_back(entry.path());
             }
+        }
 
+        // ====================================================
+        // Process each image
+        // ====================================================
+
+        for (const auto& imagePath : files)
+        {
             std::cout
                 << "Processing: "
                 << imagePath
@@ -132,7 +101,7 @@ int main(int argc, char** argv)
             // =================================================
 
             cv::Mat image =
-                cv::imread(imagePath);
+                cv::imread(imagePath.string());
 
             if (image.empty())
             {
@@ -147,76 +116,21 @@ int main(int argc, char** argv)
             // Run inference
             // =================================================
 
-            std::vector<Detection>
-                detections =
-                    detector.infer(image);
+            auto detections =
+                detector.infer(image);
 
             // =================================================
             // Draw detections
             // =================================================
 
-            for (const auto& det :
-                 detections)
+            for (const auto& det : detections)
             {
-                // =============================================
-                // Clamp box
-                // =============================================
-
-                int x =
-                    std::max(
-                        0,
-                        det.box.x
-                    );
-
-                int y =
-                    std::max(
-                        0,
-                        det.box.y
-                    );
-
-                int width =
-                    std::min(
-                        det.box.width,
-                        image.cols - x
-                    );
-
-                int height =
-                    std::min(
-                        det.box.height,
-                        image.rows - y
-                    );
-
-                if (width <= 0 ||
-                    height <= 0)
-                {
-                    continue;
-                }
-
-                cv::Rect safeBox(
-                    x,
-                    y,
-                    width,
-                    height
-                );
-
-                // =============================================
-                // Draw rectangle
-                // =============================================
-
                 cv::rectangle(
                     image,
-                    safeBox,
-                    cv::Scalar(
-                        0,
-                        255,
-                        0
-                    ),
+                    det.box,
+                    cv::Scalar(0, 255, 0),
                     2
                 );
-
-                // =============================================
-                // Class names
-                // =============================================
 
                 std::string className;
 
@@ -228,102 +142,60 @@ int main(int argc, char** argv)
                 {
                     className = "helmet";
                 }
-                else if (det.class_id == 2)
-                {
-                    className = "person";
-                }
                 else
                 {
                     className = "unknown";
                 }
 
-                // =============================================
-                // Label
-                // =============================================
-
                 std::string label =
                     className +
                     " " +
-                    cv::format(
-                        "%.2f",
-                        det.confidence
-                    );
-
-                // =============================================
-                // Draw label
-                // =============================================
+                    std::to_string(det.confidence);
 
                 cv::putText(
                     image,
                     label,
-                    cv::Point(
-                        x,
-                        std::max(
-                            0,
-                            y - 10
-                        )
-                    ),
+                    cv::Point(det.box.x, det.box.y - 10),
                     cv::FONT_HERSHEY_SIMPLEX,
                     0.5,
-                    cv::Scalar(
-                        0,
-                        255,
-                        0
-                    ),
+                    cv::Scalar(0, 255, 0),
                     2
                 );
             }
 
             // =================================================
-            // Output filename
+            // Save result
             // =================================================
 
-            std::string filename =
-                entry.path().filename()
-                .string();
+            fs::path outputPath =
+                outputDir /
+                imagePath.stem();
 
-            std::string outputPath =
-                outputDir +
-                "/processed_" +
-                filename;
+            outputPath += ".jpg";
 
-            // =================================================
-            // Save output image
-            // =================================================
-
-            bool saved =
-                cv::imwrite(
-                    outputPath,
-                    image
-                );
-
-            if (saved)
-            {
-                std::cout
-                    << "Saved: "
-                    << outputPath
-                    << std::endl;
-            }
-
-            // =================================================
-            // Mark processed
-            // =================================================
-
-            processedFiles.insert(
-                imagePath
+            cv::imwrite(
+                outputPath.string(),
+                image
             );
 
-            frameID++;
+            std::cout
+                << "Saved: "
+                << outputPath
+                << std::endl;
+
+            // =================================================
+            // Delete original
+            // =================================================
+
+            fs::remove(imagePath);
         }
 
         // ====================================================
-        // Small delay
+        // Avoid maxing CPU
         // ====================================================
 
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(
-                100
-            )
+            std::chrono::milliseconds(500)
         );
     }
 
