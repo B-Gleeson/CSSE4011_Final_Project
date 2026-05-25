@@ -7,21 +7,21 @@
 // =======================
 // Wi-Fi details
 // =======================
-const char* WIFI_SSID     = "Iphone 67";
-const char* WIFI_PASSWORD = "sunasuna";
+const char* WIFI_SSID     = "csse4011";
+const char* WIFI_PASSWORD = "csse4011wifi";
 
 // Jetson receiver URL — camera still POSTs frames here
 const char* JETSON_UPLOAD_URL = "http://192.168.1.54:5000/upload";
 
 // Static IP for the ESP32-CAM so the M5 Core can always reach it.
 
-//IPAddress LOCAL_IP(192, 168, 1, 80);
-//IPAddress GATEWAY(192, 168, 1, 1);
-//IPAddress SUBNET(255, 255, 255, 0);
+IPAddress LOCAL_IP(192, 168, 1, 80);
+IPAddress GATEWAY(192, 168, 1, 1);
+IPAddress SUBNET(255, 255, 255, 0);
 
-IPAddress LOCAL_IP(172, 20, 10, 10);      // ESP32-CAM
-IPAddress GATEWAY(172, 20, 10, 1);        // iPhone hotspot
-IPAddress SUBNET(255, 255, 255, 240);     // /28 mask
+//IPAddress LOCAL_IP(172, 20, 10, 10);      // ESP32-CAM
+//IPAddress GATEWAY(172, 20, 10, 1);        // iPhone hotspot
+//IPAddress SUBNET(255, 255, 255, 240);     // /28 mask
 
 // Periodic auto-capture (set to 0 to disable)
 const unsigned long PHOTO_INTERVAL_MS = 30000;

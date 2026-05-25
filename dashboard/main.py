@@ -12,7 +12,7 @@ from flask import Flask, Response, jsonify, render_template_string, request
 # Configuration
 # ============================================================
 
-SERIAL_PORT = "/dev/ttyACM1"
+SERIAL_PORT = "/dev/ttyACM2"
 BAUD_RATE   = 115200
 MAX_EVENTS  = 50
 
