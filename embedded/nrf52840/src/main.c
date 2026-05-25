@@ -5,6 +5,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/sensor.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -17,21 +18,40 @@
 #include <stdio.h>
 #include <string.h>
 
-LOG_MODULE_REGISTER(uv_alarm_node, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(humidity_alarm_node, LOG_LEVEL_INF);
+
+/* ============================================================
+ * DHT11 / XC4520 humidity sensor
+ *
+ * Required overlay alias:
+ *
+ * aliases {
+ *     dht0 = &humidity_sensor;
+ * };
+ * ============================================================ */
+
+#define DHT_NODE DT_ALIAS(dht0)
+
+#if !DT_NODE_HAS_STATUS(DHT_NODE, okay)
+#error "No enabled dht0 devicetree alias found. Add the XC4520/DHT11 node to your overlay."
+#endif
+
+static const struct device *const dht_dev = DEVICE_DT_GET(DHT_NODE);
 
 /* ============================================================
  * Optional alarm GPIO placeholder
  *
  * If you define an alias called "alarm" in your board overlay,
  * this code will use it. Otherwise it will still compile and
- * just log alarm state changes.
+ * only log alarm state changes.
  * ============================================================ */
 
 #define ALARM_NODE DT_ALIAS(alarm)
 
 #if DT_NODE_HAS_STATUS(ALARM_NODE, okay)
 #define HAS_ALARM_GPIO 1
-static const struct gpio_dt_spec alarm_gpio = GPIO_DT_SPEC_GET(ALARM_NODE, gpios);
+static const struct gpio_dt_spec alarm_gpio =
+    GPIO_DT_SPEC_GET(ALARM_NODE, gpios);
 #else
 #define HAS_ALARM_GPIO 0
 #endif
@@ -48,7 +68,7 @@ static bool alarm_enabled;
  * ============================================================ */
 
 enum command_type {
-    CMD_UV_READ,
+    CMD_HUMIDITY_READ,
     CMD_ALARM_SET,
     CMD_UNKNOWN,
 };
@@ -79,28 +99,70 @@ static const struct bt_data sd[] = {
 };
 
 /* ============================================================
- * Placeholder UV sensor interface
+ * XC4520 / DHT11 sensor interface
+ *
+ * Values are returned as x100 integers:
+ *
+ * humidity_x100       = 5432 means 54.32 %RH
+ * temperature_c_x100  = 2380 means 23.80 deg C
+ *
+ * The DHT11 itself normally has coarse resolution, but this
+ * format keeps the JSON structure clean and avoids float printf.
  * ============================================================ */
 
-struct uv_reading {
-    int32_t raw;
-    int32_t millivolts;
-    int32_t uv_index_x100;
+struct humidity_reading {
+    int32_t humidity_x100;
+    int32_t temperature_c_x100;
 };
 
-static int uv_sensor_read(struct uv_reading *out)
+static int32_t sensor_value_to_x100(const struct sensor_value *value)
 {
+    return (int32_t)((value->val1 * 100) + (value->val2 / 10000));
+}
+
+static int humidity_sensor_init(void)
+{
+    if (!device_is_ready(dht_dev)) {
+        LOG_ERR("Humidity sensor device not ready");
+        return -ENODEV;
+    }
+
+    LOG_INF("XC4520/DHT11 humidity sensor initialized");
+    return 0;
+}
+
+static int humidity_sensor_read(struct humidity_reading *out)
+{
+    struct sensor_value humidity;
+    struct sensor_value temperature;
+    int err;
+
     if (out == NULL) {
         return -EINVAL;
     }
 
-    /*
-     * Placeholder dummy values.
-     * Replace these with real ADC/I2C sensor values later.
-     */
-    out->raw = 1234;
-    out->millivolts = 850;
-    out->uv_index_x100 = 245;  /* 2.45 UV index */
+    err = sensor_sample_fetch(dht_dev);
+    if (err) {
+        LOG_ERR("DHT sample fetch failed: %d", err);
+        return err;
+    }
+
+    err = sensor_channel_get(dht_dev, SENSOR_CHAN_HUMIDITY, &humidity);
+    if (err) {
+        LOG_ERR("Humidity channel read failed: %d", err);
+        return err;
+    }
+
+    err = sensor_channel_get(dht_dev,
+                             SENSOR_CHAN_AMBIENT_TEMP,
+                             &temperature);
+    if (err) {
+        LOG_ERR("Temperature channel read failed: %d", err);
+        return err;
+    }
+
+    out->humidity_x100 = sensor_value_to_x100(&humidity);
+    out->temperature_c_x100 = sensor_value_to_x100(&temperature);
 
     return 0;
 }
@@ -112,12 +174,14 @@ static int uv_sensor_read(struct uv_reading *out)
 static int alarm_init(void)
 {
 #if HAS_ALARM_GPIO
+    int err;
+
     if (!gpio_is_ready_dt(&alarm_gpio)) {
         LOG_ERR("Alarm GPIO device not ready");
         return -ENODEV;
     }
 
-    int err = gpio_pin_configure_dt(&alarm_gpio, GPIO_OUTPUT_INACTIVE);
+    err = gpio_pin_configure_dt(&alarm_gpio, GPIO_OUTPUT_INACTIVE);
     if (err) {
         LOG_ERR("Failed to configure alarm GPIO: %d", err);
         return err;
@@ -136,7 +200,11 @@ static void alarm_set(bool enabled)
     alarm_enabled = enabled;
 
 #if HAS_ALARM_GPIO
-    gpio_pin_set_dt(&alarm_gpio, enabled ? 1 : 0);
+    int err = gpio_pin_set_dt(&alarm_gpio, enabled ? 1 : 0);
+
+    if (err) {
+        LOG_ERR("Failed to set alarm GPIO: %d", err);
+    }
 #endif
 
     LOG_INF("Alarm %s", enabled ? "ON" : "OFF");
@@ -148,12 +216,14 @@ static void alarm_set(bool enabled)
 
 static void nus_send_text(const char *text)
 {
+    int err;
+
     if (current_conn == NULL) {
         LOG_WRN("No BLE connection; cannot send NUS message");
         return;
     }
 
-    int err = bt_nus_send(current_conn, text, strlen(text));
+    err = bt_nus_send(current_conn, text, strlen(text));
     if (err) {
         LOG_WRN("bt_nus_send failed: %d", err);
     }
@@ -163,46 +233,55 @@ static void nus_send_text(const char *text)
  * Response helpers
  * ============================================================ */
 
-static void send_uv_response(void)
+static void send_humidity_response(void)
 {
-    struct uv_reading reading;
-    char msg[160];
+    struct humidity_reading reading;
+    char msg[24];
+    int err;
 
-    int err = uv_sensor_read(&reading);
+    err = humidity_sensor_read(&reading);
+
     if (err) {
-        snprintf(msg, sizeof(msg),
-                 "{\"type\":\"uv_error\",\"err\":%d}\n",
-                 err);
+        /*
+         * Compact BLE response for the base node:
+         * E,<error_code>\n
+         *
+         * Keep this below the default NUS notification payload size.
+         */
+        snprintf(msg, sizeof(msg), "E,%d\n", err);
         nus_send_text(msg);
+
+        LOG_ERR("DHT read failed: %d", err);
         return;
     }
 
+    /*
+     * Compact BLE response for the base node:
+     * H,<humidity_x100>,<temperature_c_x100>,<alarm>\n
+     *
+     * Example: H,5400,2310,0
+     */
     snprintf(msg, sizeof(msg),
-             "{\"type\":\"uv_data\","
-             "\"raw\":%ld,"
-             "\"mv\":%ld,"
-             "\"uv_x100\":%ld,"
-             "\"alarm\":%s}\n",
-             (long)reading.raw,
-             (long)reading.millivolts,
-             (long)reading.uv_index_x100,
-             alarm_enabled ? "true" : "false");
+             "H,%ld,%ld,%d\n",
+             (long)reading.humidity_x100,
+             (long)reading.temperature_c_x100,
+             alarm_enabled ? 1 : 0);
 
     nus_send_text(msg);
 
-    LOG_INF("Sent UV response: raw=%ld mv=%ld uv_x100=%ld",
-            (long)reading.raw,
-            (long)reading.millivolts,
-            (long)reading.uv_index_x100);
+    LOG_INF("Sent compact humidity response: %s", msg);
 }
 
 static void send_alarm_ack(bool enabled)
 {
-    char msg[96];
+    char msg[8];
 
-    snprintf(msg, sizeof(msg),
-             "{\"type\":\"alarm_ack\",\"alarm\":%s}\n",
-             enabled ? "true" : "false");
+    /*
+     * Compact BLE packet:
+     * A,1\n = alarm enabled
+     * A,0\n = alarm disabled
+     */
+    snprintf(msg, sizeof(msg), "A,%d\n", enabled ? 1 : 0);
 
     nus_send_text(msg);
 }
@@ -214,27 +293,31 @@ static void send_alarm_ack(bool enabled)
 static void process_command(const struct app_command *cmd)
 {
     switch (cmd->type) {
-    case CMD_UV_READ:
-        send_uv_response();
+    case CMD_HUMIDITY_READ:
+        //nus_send_text("H,5400,2300,0\n");
+        //LOG_INF("DIAG: HUMIDITY_READ received, response suppressed");
+        send_humidity_response();
         break;
 
     case CMD_ALARM_SET:
         alarm_set(cmd->alarm_value);
+        //LOG_INF("DIAG: ALARM command received, ACK suppressed");
         send_alarm_ack(cmd->alarm_value);
         break;
 
     case CMD_UNKNOWN:
     default:
         nus_send_text("{\"type\":\"error\",\"msg\":\"unknown_command\"}\n");
+        //LOG_INF("DIAG: unknown command suppressed");
         break;
     }
 }
 
 static void command_work_handler(struct k_work *work)
 {
-    ARG_UNUSED(work);
-
     struct app_command cmd;
+
+    ARG_UNUSED(work);
 
     while (k_msgq_get(&command_queue, &cmd, K_NO_WAIT) == 0) {
         process_command(&cmd);
@@ -252,18 +335,21 @@ static struct app_command parse_command(const char *text)
         .alarm_value = false,
     };
 
-    if (strcmp(text, "UV_READ") == 0 || strcmp(text, "UV?") == 0) {
-        cmd.type = CMD_UV_READ;
+    if (strcmp(text, "HUMIDITY_READ") == 0 ||
+        strcmp(text, "HUMIDITY?") == 0) {
+        cmd.type = CMD_HUMIDITY_READ;
         return cmd;
     }
 
-    if (strcmp(text, "ALARM 1") == 0 || strcmp(text, "ALARM_ON") == 0) {
+    if (strcmp(text, "ALARM 1") == 0 ||
+        strcmp(text, "ALARM_ON") == 0) {
         cmd.type = CMD_ALARM_SET;
         cmd.alarm_value = true;
         return cmd;
     }
 
-    if (strcmp(text, "ALARM 0") == 0 || strcmp(text, "ALARM_OFF") == 0) {
+    if (strcmp(text, "ALARM 0") == 0 ||
+        strcmp(text, "ALARM_OFF") == 0) {
         cmd.type = CMD_ALARM_SET;
         cmd.alarm_value = false;
         return cmd;
@@ -276,17 +362,17 @@ static void nus_received_cb(struct bt_conn *conn,
                             const uint8_t *data,
                             uint16_t len)
 {
+    struct app_command cmd;
+    char rx_text[80];
+    size_t copy_len;
+    int err;
+
     ARG_UNUSED(conn);
 
-    char rx_text[80];
-
-    size_t copy_len = MIN((size_t)len, sizeof(rx_text) - 1);
+    copy_len = MIN((size_t)len, sizeof(rx_text) - 1);
     memcpy(rx_text, data, copy_len);
     rx_text[copy_len] = '\0';
 
-    /*
-     * Strip newline and carriage return.
-     */
     for (size_t i = 0; i < copy_len; i++) {
         if (rx_text[i] == '\n' || rx_text[i] == '\r') {
             rx_text[i] = '\0';
@@ -296,9 +382,9 @@ static void nus_received_cb(struct bt_conn *conn,
 
     LOG_INF("NUS RX: %s", rx_text);
 
-    struct app_command cmd = parse_command(rx_text);
+    cmd = parse_command(rx_text);
 
-    int err = k_msgq_put(&command_queue, &cmd, K_NO_WAIT);
+    err = k_msgq_put(&command_queue, &cmd, K_NO_WAIT);
     if (err) {
         LOG_WRN("Command queue full");
         nus_send_text("{\"type\":\"error\",\"msg\":\"command_queue_full\"}\n");
@@ -328,9 +414,11 @@ K_WORK_DEFINE(restart_adv_work, restart_adv_work_handler);
 
 static int start_advertising(void)
 {
-    int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
-                              ad, ARRAY_SIZE(ad),
-                              sd, ARRAY_SIZE(sd));
+    int err;
+
+    err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+                          ad, ARRAY_SIZE(ad),
+                          sd, ARRAY_SIZE(sd));
 
     if (err == -EALREADY) {
         return 0;
@@ -422,9 +510,15 @@ int main(void)
 {
     int err;
 
-    LOG_INF("UV alarm NUS node starting");
+    LOG_INF("Humidity alarm NUS node starting");
 
     k_work_init(&command_work, command_work_handler);
+
+    err = humidity_sensor_init();
+    if (err) {
+        LOG_ERR("Humidity sensor init failed: %d", err);
+        return err;
+    }
 
     err = alarm_init();
     if (err) {
@@ -438,7 +532,7 @@ int main(void)
         return err;
     }
 
-    LOG_INF("UV alarm NUS node ready");
+    LOG_INF("Humidity alarm NUS node ready");
 
     while (true) {
         k_sleep(K_SECONDS(60));
