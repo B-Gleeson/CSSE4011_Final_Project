@@ -62,6 +62,8 @@ int main(int argc, char** argv)
     // Create YOLO detector
     YOLODetector detector(enginePath);
 
+    int frameId = 0;
+
     // Continuous processing loop
     while (true)
     {
@@ -135,6 +137,8 @@ int main(int argc, char** argv)
 
                 continue;
             }
+
+            frameId++;
 
             // =================================================
             // Run TensorRT YOLO inference
@@ -230,11 +234,6 @@ int main(int argc, char** argv)
             std::string action =
                 ppeDetected ? "none" : "alert";
 
-            fs::path outputPath =
-                outputDir /
-                imagePath.stem();
-
-            outputPath += ".jpg";
 
             // =================================================
             // Write latest telemetry JSON
@@ -255,7 +254,7 @@ int main(int argc, char** argv)
 
             jsonFile
             << "{\n"
-            << "  \"frame_id\": 1,\n"
+            << "  \"frame_id\": " << frameId << ",\n"
             << "  \"node_id\": \"camera_01\",\n"
             << "  \"ppe_detected\": "
             << (ppeDetected ? "true" : "false")
