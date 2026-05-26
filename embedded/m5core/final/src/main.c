@@ -12,6 +12,8 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
+#include <zephyr/drivers/display.h>
+
 #include <zephyr/sys/util.h>
 
 #include <errno.h>
@@ -26,17 +28,17 @@
  * User configuration
  * ============================================================ */
 
-#define WIFI_SSID       "Iphone 67"
-#define WIFI_PSK        "sunasuna"
+#define WIFI_SSID       "csse4011"
+#define WIFI_PSK        "csse4011wifi"
 
 #define JETSON_IP       "192.168.1.54"
 #define JETSON_PORT     5000
 
-//#define ESP32CAM_IP   "192.168.1.80"
-//#define ESP32CAM_PORT 80
-
-#define ESP32CAM_IP   "172.20.10.10"
+#define ESP32CAM_IP   "192.168.1.80"
 #define ESP32CAM_PORT 80
+//hotspot testing
+//#define ESP32CAM_IP   "172.20.10.10"
+#//define ESP32CAM_PORT 80
 
 #define RESULT_PATH     "/latest_result.json"
 #define IMAGE_URL       "http://" JETSON_IP ":5000/latest_image.jpg"
@@ -48,8 +50,7 @@
 #define DASHBOARD_BAUD  115200
 
 #define JETSON_POLL_PERIOD_MS  3000
-#define UV_READ_PERIOD_MS      10000
-#define HEARTBEAT_PERIOD_MS    5000
+#define HUMIDITY_READ_PERIOD_MS 10000
 
 #define MAX_HTTP_BODY_BYTES    2048
 #define MAX_HTTP_RX_BYTES      3072
@@ -80,6 +81,9 @@ static struct bt_uuid_128 nus_tx_uuid =
 /* ============================================================
  * Global state
  * ============================================================ */
+
+static const struct device *display_dev;
+
 
 static const struct device *dashboard_uart;
 
@@ -125,20 +129,24 @@ static struct bt_gatt_discover_params discover_params;
 static struct bt_gatt_subscribe_params subscribe_params;
 
 /* Threads */
-K_THREAD_STACK_DEFINE(wifi_stack, 4096);
+
+
+K_THREAD_STACK_DEFINE(wifi_stack, 3072);
 static struct k_thread wifi_thread_data;
 
-K_THREAD_STACK_DEFINE(serial_rx_stack, 6144);
+K_THREAD_STACK_DEFINE(serial_rx_stack, 2048);
 static struct k_thread serial_rx_thread_data;
 
 K_THREAD_STACK_DEFINE(jetson_poll_stack, 4096);
 static struct k_thread jetson_poll_thread_data;
 
-K_THREAD_STACK_DEFINE(uv_poll_stack, 2048);
-static struct k_thread uv_poll_thread_data;
+K_THREAD_STACK_DEFINE(humidity_poll_stack, 1024);
+static struct k_thread humidity_poll_thread_data;
 
-K_THREAD_STACK_DEFINE(heartbeat_stack, 2048);
-static struct k_thread heartbeat_thread_data;
+K_THREAD_STACK_DEFINE(display_stack, 3072);
+static struct k_thread display_thread_data;
+
+
 
 /* ============================================================
  * PPE result model
@@ -203,6 +211,25 @@ static void serial_send_str(const char *s)
     serial_send_bytes((const uint8_t *)s, strlen(s));
 }
 
+static void dashboard_send_humidity_data(long humidity_x100,
+                                         long temperature_c_x100,
+                                         bool alarm)
+{
+    char line[192];
+
+    snprintf(line, sizeof(line),
+             "{\"type\":\"humidity_data\","
+             "\"node_id\":\"alarm_node\","
+             "\"humidity_x100\":%ld,"
+             "\"temperature_c_x100\":%ld,"
+             "\"alarm\":%s}\n",
+             humidity_x100,
+             temperature_c_x100,
+             alarm ? "true" : "false");
+
+    serial_send_str(line);
+}
+
 static void dashboard_send_status(const char *status)
 {
     char line[192];
@@ -231,6 +258,32 @@ static void dashboard_send_alert(const char *message)
              "\"node_id\":\"base_node\","
              "\"message\":\"%s\"}\n",
              message);
+
+    serial_send_str(line);
+}
+
+static void dashboard_send_humidity_error(int err)
+{
+    char line[128];
+
+    snprintf(line, sizeof(line),
+             "{\"type\":\"humidity_error\","
+             "\"node_id\":\"alarm_node\","
+             "\"err\":%d}\n",
+             err);
+
+    serial_send_str(line);
+}
+
+static void dashboard_send_alarm_ack(bool enabled)
+{
+    char line[128];
+
+    snprintf(line, sizeof(line),
+             "{\"type\":\"alarm_ack\","
+             "\"node_id\":\"alarm_node\","
+             "\"alarm\":%s}\n",
+             enabled ? "true" : "false");
 
     serial_send_str(line);
 }
@@ -1025,12 +1078,15 @@ static int alarm_nus_send(const char *cmd)
         dashboard_send_status("nus_not_ready");
         return -ENOTCONN;
     }
+    dashboard_send_status("writing without response");
 
     int err = bt_gatt_write_without_response(alarm_conn,
                                              nus_rx_handle,
                                              cmd,
                                              strlen(cmd),
                                              false);
+
+    dashboard_send_status("wrote without response");
 
     if (err) {
         dashboard_send_status_with_err("nus_write_failed", err);
@@ -1058,11 +1114,136 @@ static void alarm_update_if_needed(bool required)
     }
 }
 
+static bool packet_ends_ok(char ch)
+{
+    return ch == '\0' || ch == '\n' || ch == '\r';
+}
+
+static bool parse_long_field(const char **cursor, long *out)
+{
+    char *end;
+    long value;
+
+    if (cursor == NULL || *cursor == NULL || out == NULL) {
+        return false;
+    }
+
+    errno = 0;
+    value = strtol(*cursor, &end, 10);
+
+    if (end == *cursor || errno == ERANGE) {
+        return false;
+    }
+
+    *cursor = end;
+    *out = value;
+    return true;
+}
+
+static bool parse_humidity_packet(const char *msg,
+                                  long *humidity_x100,
+                                  long *temperature_c_x100,
+                                  bool *alarm)
+{
+    const char *p = msg;
+    long h;
+    long t;
+    long a;
+
+    if (msg == NULL || humidity_x100 == NULL ||
+        temperature_c_x100 == NULL || alarm == NULL) {
+        return false;
+    }
+
+    if (p[0] != 'H' || p[1] != ',') {
+        return false;
+    }
+
+    p += 2;
+
+    if (!parse_long_field(&p, &h) || *p != ',') {
+        return false;
+    }
+    p++;
+
+    if (!parse_long_field(&p, &t) || *p != ',') {
+        return false;
+    }
+    p++;
+
+    if (!parse_long_field(&p, &a) || !packet_ends_ok(*p)) {
+        return false;
+    }
+
+    if (a != 0 && a != 1) {
+        return false;
+    }
+
+    *humidity_x100 = h;
+    *temperature_c_x100 = t;
+    *alarm = a != 0;
+
+    return true;
+}
+
+static bool parse_error_packet(const char *msg, int *err_out)
+{
+    const char *p = msg;
+    long err;
+
+    if (msg == NULL || err_out == NULL) {
+        return false;
+    }
+
+    if (p[0] != 'E' || p[1] != ',') {
+        return false;
+    }
+
+    p += 2;
+
+    if (!parse_long_field(&p, &err) || !packet_ends_ok(*p)) {
+        return false;
+    }
+
+    *err_out = (int)err;
+    return true;
+}
+
+static bool parse_alarm_packet(const char *msg, bool *alarm)
+{
+    const char *p = msg;
+    long a;
+
+    if (msg == NULL || alarm == NULL) {
+        return false;
+    }
+
+    if (p[0] != 'A' || p[1] != ',') {
+        return false;
+    }
+
+    p += 2;
+
+    if (!parse_long_field(&p, &a) || !packet_ends_ok(*p)) {
+        return false;
+    }
+
+    if (a != 0 && a != 1) {
+        return false;
+    }
+
+    *alarm = a != 0;
+    return true;
+}
+
 static uint8_t nus_notify_func(struct bt_conn *conn,
                                struct bt_gatt_subscribe_params *params,
                                const void *data,
                                uint16_t length)
 {
+    char msg[64];
+    size_t copy_len;
+
     ARG_UNUSED(conn);
 
     if (!data) {
@@ -1074,7 +1255,6 @@ static uint8_t nus_notify_func(struct bt_conn *conn,
                               "nus_notify_stopped_conn_alive" :
                               "nus_notify_stopped_no_conn");
 
-        /* Force a clean reconnect path if the subscription collapses. */
         if (alarm_conn) {
             (void)bt_conn_disconnect(alarm_conn,
                                      BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -1083,19 +1263,61 @@ static uint8_t nus_notify_func(struct bt_conn *conn,
         return BT_GATT_ITER_STOP;
     }
 
-    char msg[256];
-    size_t copy_len = MIN(length, sizeof(msg) - 2);
-
+    copy_len = MIN((size_t)length, sizeof(msg) - 1);
     memcpy(msg, data, copy_len);
     msg[copy_len] = '\0';
 
-    if (copy_len == 0 || msg[copy_len - 1] != '\n') {
-        msg[copy_len] = '\n';
-        msg[copy_len + 1] = '\0';
+    if (msg[0] == 'H' && msg[1] == ',') {
+        long humidity_x100;
+        long temperature_c_x100;
+        bool alarm;
+
+        if (parse_humidity_packet(msg,
+                                  &humidity_x100,
+                                  &temperature_c_x100,
+                                  &alarm)) {
+            alarm_state = alarm;
+
+            dashboard_send_humidity_data(humidity_x100,
+                                         temperature_c_x100,
+                                         alarm_state);
+
+            dashboard_send_status("humidity_received");
+        } else {
+            dashboard_send_alert("Malformed humidity packet");
+        }
+
+        return BT_GATT_ITER_CONTINUE;
     }
 
-    serial_send_str(msg);
+    if (msg[0] == 'E' && msg[1] == ',') {
+        int err;
 
+        if (parse_error_packet(msg, &err)) {
+            dashboard_send_humidity_error(err);
+            dashboard_send_status("humidity_sensor_error");
+        } else {
+            dashboard_send_alert("Malformed humidity error packet");
+        }
+
+        return BT_GATT_ITER_CONTINUE;
+    }
+
+    if (msg[0] == 'A' && msg[1] == ',') {
+        bool alarm;
+
+        if (parse_alarm_packet(msg, &alarm)) {
+            alarm_state = alarm;
+            dashboard_send_alarm_ack(alarm_state);
+            dashboard_send_status("alarm_ack_received");
+        } else {
+            dashboard_send_alert("Malformed alarm acknowledgement");
+        }
+
+        return BT_GATT_ITER_CONTINUE;
+    }
+
+    dashboard_send_alert("Unknown alarm-node BLE packet");
     return BT_GATT_ITER_CONTINUE;
 }
 
@@ -1476,13 +1698,20 @@ static void handle_dashboard_command(const char *line)
         return;
     }
 
-    if (strcmp(target, "camera") == 0 && strcmp(command, "take_photo") == 0) {
-            dashboard_send_status("camera_command_parsed");
+    /* --------------------------------------------------------
+     * ESP32 camera command
+     * -------------------------------------------------------- */
+
+    if (strcmp(target, "camera") == 0 &&
+        strcmp(command, "take_photo") == 0) {
+
+        dashboard_send_status("camera_command_parsed");
+
         if (!wifi_ready) {
             dashboard_send_alert("Camera command failed: Wi-Fi not ready");
             return;
         }
-     
+
         int err = http_post_to_cam("/capture", "{}");
 
         dashboard_send_alert(err == 0 ?
@@ -1491,30 +1720,46 @@ static void handle_dashboard_command(const char *line)
         return;
     }
 
-    if ((strcmp(target, "uv_node") == 0 ||
-         strcmp(target, "alarm_node") == 0) &&
-        strcmp(command, "read_uv") == 0) {
-        int err = alarm_nus_send("UV_READ\n");
+    /* --------------------------------------------------------
+     * Humidity sensor read command
+     *
+     * Dashboard sends:
+     *   {"target":"alarm_node","command":"read_humidity"}
+     *
+     * Base forwards to BLE humidity node:
+     *   HUMIDITY_READ\n
+     * -------------------------------------------------------- */
+
+    if (strcmp(target, "alarm_node") == 0 &&
+        strcmp(command, "read_humidity") == 0) {
+
+        int err = alarm_nus_send("HUMIDITY_READ\n");
 
         dashboard_send_alert(err == 0 ?
-                             "UV read requested" :
-                             "UV read request failed");
+                             "Humidity read requested" :
+                             "Humidity read request failed");
         return;
     }
 
-    if ((strcmp(target, "uv_node") == 0 ||
-         strcmp(target, "alarm_node") == 0) &&
+    /* --------------------------------------------------------
+     * Alarm control commands
+     * -------------------------------------------------------- */
+
+    if (strcmp(target, "alarm_node") == 0 &&
         strcmp(command, "alarm_on") == 0) {
         (void)alarm_send_state(true);
         return;
     }
 
-    if ((strcmp(target, "uv_node") == 0 ||
-         strcmp(target, "alarm_node") == 0) &&
+    if (strcmp(target, "alarm_node") == 0 &&
         strcmp(command, "alarm_off") == 0) {
         (void)alarm_send_state(false);
         return;
     }
+
+    /* --------------------------------------------------------
+     * Base status request
+     * -------------------------------------------------------- */
 
     if (strcmp(target, "base_node") == 0 &&
         strcmp(command, "status") == 0) {
@@ -1523,6 +1768,112 @@ static void handle_dashboard_command(const char *line)
     }
 
     dashboard_send_alert("Unknown dashboard command");
+}
+static void display_fill_screen(uint16_t colour)
+{
+    static uint16_t line_buf[320];
+
+    struct display_buffer_descriptor desc = {
+        .buf_size = sizeof(line_buf),
+        .width    = 320,
+        .height   = 1,
+        .pitch    = 320,
+    };
+
+    for (int i = 0; i < 320; i++) {
+        line_buf[i] = colour;
+    }
+
+    for (int y = 0; y < 240; y++) {
+        display_write(display_dev, 0, y, &desc, line_buf);
+    }
+}
+
+static void display_draw_block(int x0, int y0, int w, int h, uint16_t colour)
+{
+    static uint16_t line_buf[320];
+
+    if (x0 < 0 || y0 < 0 || w <= 0 || h <= 0) {
+        return;
+    }
+
+    if (x0 + w > 320) {
+        w = 320 - x0;
+    }
+
+    if (y0 + h > 240) {
+        h = 240 - y0;
+    }
+
+    struct display_buffer_descriptor desc = {
+        .buf_size = sizeof(line_buf),
+        .width    = w,
+        .height   = 1,
+        .pitch    = w,
+    };
+
+    for (int i = 0; i < w; i++) {
+        line_buf[i] = colour;
+    }
+
+    for (int y = y0; y < y0 + h; y++) {
+        display_write(display_dev, x0, y, &desc, line_buf);
+    }
+}
+
+static void display_draw_alarm_symbol(uint16_t colour)
+{
+    /* Big exclamation mark */
+    display_draw_block(145, 45, 30, 105, colour);
+    display_draw_block(145, 170, 30, 30, colour);
+}
+
+static void display_thread(void *a, void *b, void *c)
+{
+    ARG_UNUSED(a);
+    ARG_UNUSED(b);
+    ARG_UNUSED(c);
+
+    display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+
+    if (!device_is_ready(display_dev)) {
+        dashboard_send_status("display_not_ready");
+        return;
+    }
+
+    display_blanking_off(display_dev);
+
+    bool last_alarm = false;
+    bool flash_state = false;
+
+    display_fill_screen(0x0000);   /* black */
+
+    while (true) {
+        bool current_alarm = alarm_state;
+
+        if (!current_alarm) {
+            if (last_alarm != current_alarm) {
+                display_fill_screen(0x0000);   /* black when alarm off */
+            }
+
+            flash_state = false;
+            last_alarm = current_alarm;
+            k_sleep(K_MSEC(250));
+            continue;
+        }
+
+        flash_state = !flash_state;
+
+        if (flash_state) {
+            display_fill_screen(0xF800);       /* red */
+            display_draw_alarm_symbol(0xFFFF); /* white ! */
+        } else {
+            display_fill_screen(0x0000);       /* black */
+        }
+
+        last_alarm = current_alarm;
+        k_sleep(K_MSEC(500));
+    }
 }
 
 static void serial_rx_thread(void *a, void *b, void *c)
@@ -1646,7 +1997,7 @@ static void jetson_poll_thread(void *a, void *b, void *c)
     }
 }
 
-static void uv_poll_thread(void *a, void *b, void *c)
+static void humidity_poll_thread(void *a, void *b, void *c)
 {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
@@ -1654,22 +2005,10 @@ static void uv_poll_thread(void *a, void *b, void *c)
 
     while (true) {
         if (nus_ready) {
-            (void)alarm_nus_send("UV_READ\n");
+            //(void)alarm_nus_send("HUMIDITY_READ\n");
         }
 
-        k_sleep(K_MSEC(UV_READ_PERIOD_MS));
-    }
-}
-
-static void heartbeat_thread(void *a, void *b, void *c)
-{
-    ARG_UNUSED(a);
-    ARG_UNUSED(b);
-    ARG_UNUSED(c);
-
-    while (true) {
-        dashboard_send_status("heartbeat");
-        k_sleep(K_MSEC(HEARTBEAT_PERIOD_MS));
+        k_sleep(K_MSEC(HUMIDITY_READ_PERIOD_MS));
     }
 }
 
@@ -1718,10 +2057,10 @@ int main(void)
                     0,
                     K_NO_WAIT);
 
-    k_thread_create(&uv_poll_thread_data,
-                    uv_poll_stack,
-                    K_THREAD_STACK_SIZEOF(uv_poll_stack),
-                    uv_poll_thread,
+    k_thread_create(&humidity_poll_thread_data,
+                    humidity_poll_stack,
+                    K_THREAD_STACK_SIZEOF(humidity_poll_stack),
+                    humidity_poll_thread,
                     NULL,
                     NULL,
                     NULL,
@@ -1729,16 +2068,12 @@ int main(void)
                     0,
                     K_NO_WAIT);
 
-    k_thread_create(&heartbeat_thread_data,
-                    heartbeat_stack,
-                    K_THREAD_STACK_SIZEOF(heartbeat_stack),
-                    heartbeat_thread,
-                    NULL,
-                    NULL,
-                    NULL,
-                    11,
-                    0,
-                    K_NO_WAIT);
+    k_thread_create(&display_thread_data,
+                display_stack,
+                K_THREAD_STACK_SIZEOF(display_stack),
+                display_thread,
+                NULL, NULL, NULL,
+                12, 0, K_NO_WAIT);
 
     dashboard_send_status("base_node_ready");
 
