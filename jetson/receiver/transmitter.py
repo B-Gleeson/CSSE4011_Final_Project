@@ -63,30 +63,39 @@ def get_latest_output_image():
 
 def get_latest_result():
 
-    latest_image = get_latest_output_image()
+    json_path = os.path.join(
+        OUTPUT_DIR,
+        "latest_result.json"
+    )
 
-    if latest_image is None:
+    if not os.path.exists(json_path):
 
         return {
             "frame_id": -1,
             "node_id": "camera_01",
-            "ppe_detected": True,
-            "missing_items": [],
+            "ppe_detected": False,
             "confidence": 0.0,
             "action": "none"
         }
 
-    filename = os.path.basename(latest_image)
+    try:
 
-    return {
-        "frame_id": 1,
-        "node_id": "camera_01",
-        "ppe_detected": False,
-        "missing_items": ["hardhat"],
-        "confidence": 0.91,
-        "action": "alert",
-        "latest_image": filename
-    }
+        with open(json_path, "r") as f:
+            return json.load(f)
+
+    except Exception as e:
+
+        print(
+            "Failed reading JSON: {0}".format(e)
+        )
+
+        return {
+            "frame_id": -1,
+            "node_id": "camera_01",
+            "ppe_detected": False,
+            "confidence": 0.0,
+            "action": "error"
+        }
 
 # ============================================================
 # HTTP Handler

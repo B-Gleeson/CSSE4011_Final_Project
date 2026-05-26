@@ -3,6 +3,8 @@
 #include <iostream>
 #include <vector>
 
+#include <fstream>
+
 #include <thread>
 #include <chrono>
 
@@ -162,6 +164,59 @@ int main(int argc, char** argv)
                     2
                 );
             }
+
+            bool helmetDetected = false;
+            bool headDetected = false;
+
+            float bestConfidence = 0.0f;
+
+            for (const auto& det : detections)
+            {
+                if (det.class_id == 0)
+                {
+                    headDetected = true;
+                }
+
+                if (det.class_id == 1)
+                {
+                    helmetDetected = true;
+                }
+
+                if (det.confidence > bestConfidence)
+                {
+                    bestConfidence = det.confidence;
+                }
+            }
+
+            bool ppeDetected =
+                helmetDetected;
+
+            std::string action =
+                ppeDetected ? "none" : "alert";
+
+            std::ofstream jsonFile(
+                "images/output/latest_result.json"
+            );
+
+            jsonFile
+                << "{\n"
+                << "  \"frame_id\": 1,\n"
+                << "  \"node_id\": \"camera_01\",\n"
+                << "  \"ppe_detected\": "
+                << (ppeDetected ? "true" : "false")
+                << ",\n"
+                << "  \"confidence\": "
+                << bestConfidence
+                << ",\n"
+                << "  \"action\": \""
+                << action
+                << "\",\n"
+                << "  \"latest_image\": \""
+                << outputPath.filename().string()
+                << "\"\n"
+                << "}\n";
+
+            jsonFile.close();
 
             // =================================================
             // Save result
