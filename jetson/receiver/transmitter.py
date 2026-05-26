@@ -4,10 +4,7 @@ from datetime import datetime
 import os
 import json
 
-# ============================================================
 # Directories
-# ============================================================
-
 INCOMING_DIR = os.path.join(
     "images",
     "incoming"
@@ -20,19 +17,13 @@ OUTPUT_DIR = os.path.join(
 
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
-# ============================================================
 # Utilities
-# ============================================================
-
 def ensure_dir(path):
 
     if not os.path.isdir(path):
         os.makedirs(path)
 
-# ============================================================
 # Latest processed image
-# ============================================================
-
 def get_latest_output_image():
 
     if not os.path.isdir(OUTPUT_DIR):
@@ -57,10 +48,7 @@ def get_latest_output_image():
         latest
     )
 
-# ============================================================
 # Latest AI result
-# ============================================================
-
 def get_latest_result():
 
     json_path = os.path.join(
@@ -97,23 +85,14 @@ def get_latest_result():
             "action": "error"
         }
 
-# ============================================================
 # HTTP Handler
-# ============================================================
-
 class ImageReceiverHandler(
     BaseHTTPRequestHandler):
 
-    # ========================================================
     # GET
-    # ========================================================
-
     def do_GET(self):
 
-        # ====================================================
         # Health
-        # ====================================================
-
         if self.path == "/" or \
            self.path == "/health":
 
@@ -145,10 +124,7 @@ class ImageReceiverHandler(
 
             return
 
-        # ====================================================
         # Latest AI result
-        # ====================================================
-
         if self.path == "/latest_result.json":
 
             response = get_latest_result()
@@ -175,10 +151,7 @@ class ImageReceiverHandler(
 
             return
 
-        # ====================================================
         # Latest processed image
-        # ====================================================
-
         if self.path == "/latest_image.jpg":
 
             latest_image = \
@@ -249,18 +222,12 @@ class ImageReceiverHandler(
 
                 return
 
-        # ====================================================
         # Not found
-        # ====================================================
-
         self.send_response(404)
 
         self.end_headers()
 
-    # ========================================================
     # POST
-    # ========================================================
-
     def do_POST(self):
 
         if self.path != "/upload":
@@ -421,10 +388,7 @@ class ImageReceiverHandler(
                 "Failed to save image"
             )
 
-# ============================================================
 # Main
-# ============================================================
-
 def main():
 
     host = "0.0.0.0"
@@ -462,9 +426,6 @@ def main():
 
     server.serve_forever()
 
-# ============================================================
-# Entry
-# ============================================================
-
+# Entry point
 if __name__ == "__main__":
     main()

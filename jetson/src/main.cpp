@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <vector>
-
 #include <fstream>
 
 #include <thread>
@@ -12,10 +11,30 @@
 
 #include <experimental/filesystem>
 
+// Filesystem namespace alias
 namespace fs = std::experimental::filesystem;
+
+// ============================================================
+// Main
+//
+// Continuously scans the incoming image directory for
+// newly uploaded images from the ESP32-CAM.
+//
+// Each image is:
+//  1. Loaded into memory
+//  2. Processed using the YOLO TensorRT detector
+//  3. Annotated with bounding boxes + labels
+//  4. Saved into the output directory
+//  5. Deleted from the incoming directory
+//
+// The program also generates a JSON telemetry file
+// containing the latest PPE detection result for
+// communication with the M5Core base station.
+// ============================================================
 
 int main(int argc, char** argv)
 {
+        // Validate command line arguments
     if (argc < 2)
     {
         std::cout
@@ -25,49 +44,56 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    // TensorRT engine file path
     std::string enginePath =
         argv[1];
 
+    // Image directories
     fs::path incomingDir =
         "images/incoming";
 
     fs::path outputDir =
         "images/output";
 
+    // Create directories if they do not exist
     fs::create_directories(incomingDir);
     fs::create_directories(outputDir);
 
-    // ========================================================
-    // Create detector
-    // ========================================================
-
+    // Create YOLO detector
     YOLODetector detector(enginePath);
 
-    // ========================================================
     // Continuous processing loop
-    // ========================================================
-
     while (true)
     {
+        // ====================================================
+        // List of images to process
+        //
+        // We store files first before processing so that
+        // deleting files later does not invalidate the
+        // recursive directory iterator.
+        // ====================================================
         std::vector<fs::path> files;
 
-        // ====================================================
-        // Find all images
-        // ====================================================
-
+        // Recursively search incoming directory
         for (
             auto& entry :
             fs::recursive_directory_iterator(incomingDir)
         )
         {
+            // Skip anything that is not a normal file
             if (!fs::is_regular_file(entry.path()))
             {
                 continue;
             }
 
+            // Get file extension
             std::string ext =
                 entry.path().extension().string();
 
+            // =================================================
+            // Convert extension to lowercase so that
+            // JPG, JPG, Jpg etc all work correctly
+            // =================================================
             std::transform(
                 ext.begin(),
                 ext.end(),
@@ -75,6 +101,7 @@ int main(int argc, char** argv)
                 ::tolower
             );
 
+            // Accept supported image types only
             if (
                 ext == ".jpg"  ||
                 ext == ".jpeg" ||
@@ -87,10 +114,7 @@ int main(int argc, char** argv)
             }
         }
 
-        // ====================================================
-        // Process each image
-        // ====================================================
-
+        // Process all discovered images
         for (const auto& imagePath : files)
         {
             std::cout
@@ -98,13 +122,11 @@ int main(int argc, char** argv)
                 << imagePath
                 << std::endl;
 
-            // =================================================
-            // Load image
-            // =================================================
-
+            // Load image using OpenCV
             cv::Mat image =
                 cv::imread(imagePath.string());
 
+            // Validate image loaded correctly
             if (image.empty())
             {
                 std::cout
@@ -115,18 +137,19 @@ int main(int argc, char** argv)
             }
 
             // =================================================
-            // Run inference
+            // Run TensorRT YOLO inference
+            //
+            // Returns a vector of detections containing:
+            //  - Bounding box
+            //  - Class ID
+            //  - Confidence score
             // =================================================
-
             auto detections =
                 detector.infer(image);
 
-            // =================================================
-            // Draw detections
-            // =================================================
-
             for (const auto& det : detections)
             {
+
                 cv::rectangle(
                     image,
                     det.box,
@@ -165,6 +188,15 @@ int main(int argc, char** argv)
                 );
             }
 
+            // =================================================
+            // AI telemetry generation
+            //
+            // Determine:
+            //  - whether a helmet was detected
+            //  - highest confidence detection
+            //  - whether an alert should be raised
+            // =================================================
+
             bool helmetDetected = false;
             bool headDetected = false;
 
@@ -172,16 +204,19 @@ int main(int argc, char** argv)
 
             for (const auto& det : detections)
             {
+                // Head detected
                 if (det.class_id == 0)
                 {
                     headDetected = true;
                 }
 
+                // Helmet detected
                 if (det.class_id == 1)
                 {
                     helmetDetected = true;
                 }
 
+                // Store highest confidence value
                 if (det.confidence > bestConfidence)
                 {
                     bestConfidence = det.confidence;
@@ -191,8 +226,22 @@ int main(int argc, char** argv)
             bool ppeDetected =
                 helmetDetected;
 
+            // Alert action state
             std::string action =
                 ppeDetected ? "none" : "alert";
+
+            fs::path outputPath =
+                outputDir /
+                imagePath.stem();
+
+            outputPath += ".jpg";
+
+            // =================================================
+            // Write latest telemetry JSON
+            //
+            // This file is read by transmitter.py and served
+            // to the M5Core base station.
+            // =================================================
 
             std::ofstream jsonFile(
                 "images/output/latest_result.json"
@@ -227,12 +276,7 @@ int main(int argc, char** argv)
 
             jsonFile.close();
 
-            // =================================================
-            // Save result
-            // =================================================
-
-
-
+            // Save annotated image
             cv::imwrite(
                 outputPath.string(),
                 image
@@ -244,16 +288,15 @@ int main(int argc, char** argv)
                 << std::endl;
 
             // =================================================
-            // Delete original
+            // Delete original input image
+            //
+            // Prevents duplicate processing.
             // =================================================
 
             fs::remove(imagePath);
         }
 
-        // ====================================================
-        // Avoid maxing CPU
-        // ====================================================
-
+        // Sleep briefly to avoid maxing CPU usage
         std::this_thread::sleep_for(
             std::chrono::milliseconds(500)
         );
