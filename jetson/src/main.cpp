@@ -198,23 +198,32 @@ int main(int argc, char** argv)
                 "images/output/latest_result.json"
             );
 
+            fs::path outputPath =
+            outputDir /
+            imagePath.stem();
+
+            outputPath += ".jpg";
+
             jsonFile
-                << "{\n"
-                << "  \"frame_id\": 1,\n"
-                << "  \"node_id\": \"camera_01\",\n"
-                << "  \"ppe_detected\": "
-                << (ppeDetected ? "true" : "false")
-                << ",\n"
-                << "  \"confidence\": "
-                << bestConfidence
-                << ",\n"
-                << "  \"action\": \""
-                << action
-                << "\",\n"
-                << "  \"latest_image\": \""
-                << outputPath.filename().string()
-                << "\"\n"
-                << "}\n";
+            << "{\n"
+            << "  \"frame_id\": 1,\n"
+            << "  \"node_id\": \"camera_01\",\n"
+            << "  \"ppe_detected\": "
+            << (ppeDetected ? "true" : "false")
+            << ",\n"
+            << "  \"confidence\": "
+            << bestConfidence
+            << ",\n"
+            << "  \"missing_items\": "
+            << (ppeDetected ? "[]" : "[\"helmet\"]")
+            << ",\n"
+            << "  \"action\": \""
+            << action
+            << "\",\n"
+            << "  \"latest_image\": \""
+            << outputPath.filename().string()
+            << "\"\n"
+            << "}\n";
 
             jsonFile.close();
 
@@ -222,11 +231,7 @@ int main(int argc, char** argv)
             // Save result
             // =================================================
 
-            fs::path outputPath =
-                outputDir /
-                imagePath.stem();
 
-            outputPath += ".jpg";
 
             cv::imwrite(
                 outputPath.string(),

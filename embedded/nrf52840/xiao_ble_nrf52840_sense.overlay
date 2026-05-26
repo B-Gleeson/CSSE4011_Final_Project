@@ -1,0 +1,13 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+    aliases {
+        dht0 = &humidity_sensor;
+    };
+
+    humidity_sensor: dht11 {
+        compatible = "aosong,dht";
+        status = "okay";
+        dio-gpios = <&gpio1 15 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+    };
+};
