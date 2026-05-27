@@ -1,0 +1,9 @@
+{
+  "frame_id": 48,
+  "node_id": "camera_01",
+  "ppe_detected": false,
+  "confidence": 0,
+  "missing_items": ["helmet"],
+  "action": "alert",
+  "latest_image": "20260526_175427_352898.jpg"
+}
